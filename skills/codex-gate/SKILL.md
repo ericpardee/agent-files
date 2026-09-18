@@ -43,9 +43,9 @@ Two invocation rules that will otherwise cost you a wasted run:
 - **`codex exec review` accepts a custom PROMPT only when no scope flag is given.**
   `--base`, `--commit`, and `--uncommitted` each conflict with the `[PROMPT]`
   positional and fail arg parsing with `the argument '--base <BRANCH>' cannot be used
-  with '[PROMPT]'`. Verified against codex-cli 0.146.1. Because this gate depends on
-  its reviewer contract, use `codex exec` with an explicit scope instruction rather
-  than `codex exec review`, as shown below.
+  with '[PROMPT]'`. Verified against codex-cli 0.146.1 through 0.154.0. Because this
+  gate depends on its reviewer contract, use `codex exec` with an explicit scope
+  instruction rather than `codex exec review`, as shown below.
 
 Reviewer contract - pass this prompt verbatim (it is the instructions argument):
 
@@ -78,7 +78,7 @@ and `--commit` flags.
 } > prompt.txt
 
 codex exec --sandbox read-only -c model_reasoning_effort="xhigh" \
-  "$(cat prompt.txt)" </dev/null 2>/dev/null
+  -o round1.txt "$(cat prompt.txt)" </dev/null 2>/dev/null
 ```
 
 Scope lines to substitute:
@@ -92,6 +92,20 @@ Scope lines to substitute:
 
 `codex exec` runs read-only by default, but pass `--sandbox read-only` explicitly so
 the gate's read-only guarantee does not depend on a default.
+
+Pass `-o <file>` (`--output-last-message`) so the final message lands in a file
+you can read back during Step 3. With `2>/dev/null` stdout carries only that
+message, but the file survives scrollback and later rounds (`round2.txt`, and
+so on).
+
+To review a PR branch without disturbing the working tree, check it out detached
+in a temporary worktree and run the gate there:
+
+```bash
+git worktree add --detach /tmp/gate/pr<N> <headSha>
+# ... run the gate in /tmp/gate/pr<N> ...
+git worktree remove --force /tmp/gate/pr<N>
+```
 
 If `codex` exits non-zero, stop and report; do not count a failed run as a round.
 An empty stdout with `Reading additional input from stdin...` on stderr means the
