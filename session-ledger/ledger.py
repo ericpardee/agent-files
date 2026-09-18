@@ -83,8 +83,9 @@ NOISE_PREFIXES = (
 )
 
 DISTILL_INSTRUCTIONS = """\
-You are a session cataloger. Below is a distilled excerpt of one Claude Code
-session: the user's typed prompts, the final assistant message, and metadata.
+You are a session cataloger. Below is a distilled excerpt of one coding-agent
+session: the user's typed prompts, the latest public assistant response for
+each user turn, and metadata. Responses can include progress on unfinished turns.
 
 Return EXACTLY three markdown list lines in this format and NOTHING else. No
 heading, no preamble, no code fences, no Resume line, no trailing commentary:
@@ -94,6 +95,8 @@ heading, no preamble, no code fences, no Resume line, no trailing commentary:
 - Open threads: <unresolved items, or "none">
 
 Base everything only on the excerpt. Be terse and factual.
+Preserve completed outcomes from earlier turns when a later turn changes topic.
+An omitted or trimmed detail is unknown; it is not evidence that work is unfinished.
 
 --- SESSION EXCERPT ---
 {excerpt}
@@ -361,7 +364,7 @@ def parse_session(path):
     return parse_claude_session(path)
 
 
-CODEX_IMAGE_TAG_RE = re.compile(r"^\s*<image\b[^>]*>\s*", re.IGNORECASE)
+CODEX_IMAGE_TAG_RE = re.compile(r"^\s*<image\b[^>]*>\s*(?:</image>\s*)?", re.IGNORECASE)
 # Typed prompts that carry no work: quitting the TUI, slash commands, and the
 # AGENTS.md block that older Codex versions injected as a user message.
 CODEX_NOISE_EXACT = ("exit", "quit", "q", "/exit", "/quit", "/clear", "/new", "/status")
@@ -381,8 +384,8 @@ def _codex_user_prompt(text):
 
     Codex injects blocks such as <environment_context>, <recommended_plugins>,
     <user_action> and <turn_aborted> as user messages; those start with a tag
-    and are not prompts. An attached image is a leading <image ...> tag in
-    front of the typed text and is stripped.
+    and are not prompts. Attached images have leading <image ...> wrappers
+    (with closing tags in newer rollouts), which are stripped from typed text.
     """
     stripped = text.lstrip()
     while CODEX_IMAGE_TAG_RE.match(stripped):
@@ -402,6 +405,7 @@ def parse_codex_session(path):
     ``excluded`` so only interactive sessions reach the ledger.
     """
     prompts = []
+    turns = []
     last_assistant = None
     cwd = None
     first_ts = None
@@ -444,14 +448,19 @@ def parse_codex_session(path):
                     prompt = _codex_user_prompt(_codex_message_text(payload))
                     if prompt and not is_noise_prompt(prompt):
                         prompts.append(prompt)
-                elif role == "assistant":
+                        turns.append({"prompt": prompt, "assistant": None})
+                elif role == "assistant" and payload.get("channel") != "analysis":
                     text = _codex_message_text(payload).strip()
                     if text:
                         last_assistant = text
+                        if turns:
+                            turns[-1]["assistant"] = text
             elif rtype == "event_msg" and payload.get("type") == "task_complete":
                 message = payload.get("last_agent_message")
                 if isinstance(message, str) and message.strip():
                     last_assistant = message.strip()
+                    if turns:
+                        turns[-1]["assistant"] = last_assistant
     if not session_id:
         match = CODEX_ROLLOUT_RE.match(os.path.basename(path))
         session_id = match.group(1) if match else os.path.splitext(os.path.basename(path))[0]
@@ -461,6 +470,7 @@ def parse_codex_session(path):
         "session_id": session_id,
         "path": path,
         "prompts": prompts,
+        "turns": turns,
         "last_assistant": last_assistant,
         "title": title,
         "cwd": cwd or os.getcwd(),
@@ -473,6 +483,7 @@ def parse_codex_session(path):
 def parse_claude_session(path):
     """Parse a Claude Code transcript into the bits the distiller needs."""
     prompts = []
+    turns = []
     last_assistant = None
     ai_title = None
     custom_title = None
@@ -516,6 +527,7 @@ def parse_claude_session(path):
                 if text is None or not text.strip() or is_noise_prompt(text):
                     continue
                 prompts.append(text.strip())
+                turns.append({"prompt": text.strip(), "assistant": None})
             elif rtype == "assistant":
                 msg = rec.get("message") or {}
                 content = msg.get("content")
@@ -527,8 +539,12 @@ def parse_claude_session(path):
                     ]
                     if texts:
                         last_assistant = "\n".join(texts)
+                        if turns:
+                            turns[-1]["assistant"] = last_assistant
                 elif isinstance(content, str) and content.strip():
                     last_assistant = content
+                    if turns:
+                        turns[-1]["assistant"] = last_assistant
     if not session_id:
         session_id = os.path.splitext(os.path.basename(path))[0]
     title = custom_title or ai_title
@@ -541,6 +557,7 @@ def parse_claude_session(path):
         "session_id": session_id,
         "path": path,
         "prompts": prompts,
+        "turns": turns,
         "last_assistant": last_assistant,
         "title": title,
         "cwd": cwd or os.getcwd(),
@@ -550,25 +567,58 @@ def parse_claude_session(path):
     }
 
 
+def _clip_excerpt_text(text, budget):
+    """Keep both ends of a text field, including the marker within the cap."""
+    if budget <= 0:
+        return ""
+    if len(text) <= budget:
+        return text
+    marker = "\n[... excerpt trimmed ...]\n"
+    if budget <= len(marker):
+        return text[:budget]
+    remaining = budget - len(marker)
+    head = int(remaining * 0.7)
+    tail = remaining - head
+    return text[:head] + marker + text[-tail:]
+
+
 def build_excerpt(info, max_chars):
-    lines = []
-    lines.append("cwd: %s" % info["cwd"])
-    lines.append("started: %s" % (info["first_ts"] or "unknown"))
-    lines.append("last activity: %s" % (info["last_ts"] or "unknown"))
-    lines.append("")
-    for i, prompt in enumerate(info["prompts"], 1):
-        lines.append("USER PROMPT %d:" % i)
-        lines.append(prompt)
-        lines.append("")
-    if info["last_assistant"]:
-        lines.append("FINAL ASSISTANT MESSAGE:")
-        lines.append(info["last_assistant"])
-    excerpt = "\n".join(lines)
-    if len(excerpt) > max_chars:
-        head = int(max_chars * 0.3)
-        tail = max_chars - head
-        excerpt = excerpt[:head] + "\n[... excerpt trimmed ...]\n" + excerpt[-tail:]
-    return excerpt
+    metadata = "cwd: %s\nstarted: %s\nlast activity: %s\n\n" % (
+        info["cwd"], info["first_ts"] or "unknown", info["last_ts"] or "unknown")
+    turns = info.get("turns")
+    if turns is None:
+        # Accept callers using the older parsed-info shape.
+        turns = [{"prompt": p, "assistant": None} for p in info["prompts"]]
+        if info.get("last_assistant"):
+            if not turns:
+                turns.append({"prompt": "", "assistant": None})
+            turns[-1]["assistant"] = info["last_assistant"]
+
+    def block(index, prompt, response):
+        return "USER PROMPT %d:\n%s\nASSISTANT RESPONSE %d:\n%s\n\n" % (
+            index, prompt, index, response)
+
+    excerpt = metadata + "".join(
+        block(i, t["prompt"], t["assistant"] or "[No response captured]")
+        for i, t in enumerate(turns, 1))
+    if len(excerpt) <= max_chars:
+        return excerpt
+    overhead = len(metadata) + sum(len(block(i, "", "")) for i in range(1, len(turns) + 1))
+    if not turns or overhead >= max_chars:
+        return _clip_excerpt_text(excerpt, max_chars)
+    # Give every turn room for its outcome. Global head/tail truncation loses
+    # completed work in the middle whenever the user asks a follow-up question.
+    turn_budget = (max_chars - overhead) // len(turns)
+    blocks = []
+    for i, turn in enumerate(turns, 1):
+        prompt = turn["prompt"]
+        response = turn["assistant"] or "[No response captured]"
+        prompt_budget = min(len(prompt), int(turn_budget * 0.3))
+        response_budget = min(len(response), turn_budget - prompt_budget)
+        prompt_budget = min(len(prompt), turn_budget - response_budget)
+        blocks.append(block(i, _clip_excerpt_text(prompt, prompt_budget),
+                            _clip_excerpt_text(response, response_budget)))
+    return metadata + "".join(blocks)
 
 
 # --- distillation ------------------------------------------------------------

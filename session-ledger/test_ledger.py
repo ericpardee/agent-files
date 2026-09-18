@@ -160,3 +160,69 @@ def test_never_seen_old_sessions_are_stale_unless_forced():
 def test_dream_accepts_the_legacy_header():
     assert "# Claude Code session ledger" in ledger.LEGACY_LEDGER_HEADERS
     assert ledger.LEDGER_HEADER == "# Coding agent session ledger"
+
+
+def test_codex_excerpt_keeps_completed_work_after_a_followup(tmp_path):
+    delivered = "Created /tmp/research-report.md and delivered the analysis."
+    path = _rollout(tmp_path, [
+        _meta(), _user("Research the subject and write a report."),
+        _assistant("Reading sources."), _assistant(delivered),
+        {"type": "event_msg", "payload": {
+            "type": "task_complete", "last_agent_message": delivered}},
+        _user("Does shared memory work?"), _assistant("I can read the memory index."),
+    ])
+    excerpt = ledger.build_excerpt(ledger.parse_session(str(path)), 10000)
+    assert delivered in excerpt
+    assert excerpt.count(delivered) == 1
+    assert "Reading sources." not in excerpt
+    assert "I can read the memory index." in excerpt
+
+
+def test_claude_excerpt_keeps_completed_work_after_a_followup(tmp_path):
+    path = tmp_path / "abc.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in [
+        {"type": "user", "sessionId": "abc", "cwd": "/tmp/project",
+         "message": {"role": "user", "content": "Create the report."}},
+        {"type": "assistant", "message": {"role": "assistant", "content": [
+            {"type": "text", "text": "Saved /tmp/report.md."}]}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "content": "not a new user turn"}]}},
+        {"type": "user", "message": {"role": "user", "content": "Can you read memory?"}},
+        {"type": "assistant", "message": {"role": "assistant", "content": "Yes."}},
+    ]) + "\n")
+    excerpt = ledger.build_excerpt(ledger.parse_session(str(path)), 10000)
+    assert "Saved /tmp/report.md." in excerpt
+    assert "Can you read memory?" in excerpt
+    assert "not a new user turn" not in excerpt
+
+
+def test_excerpt_budget_preserves_each_turns_outcome(tmp_path):
+    records = [_meta()]
+    for n in range(3):
+        records += [_user("request %d " % n + "context " * 2000),
+                    _assistant("Delivered artifact-%d.md. " % n + "details " * 2000)]
+    path = _rollout(tmp_path, records)
+    excerpt = ledger.build_excerpt(ledger.parse_session(str(path)), 2400)
+    assert len(excerpt) <= 2400
+    for n in range(3):
+        assert "Delivered artifact-%d.md." % n in excerpt
+
+
+def test_codex_analysis_messages_do_not_replace_public_outcomes(tmp_path):
+    analysis = _assistant("internal analysis sentinel")
+    analysis["payload"]["channel"] = "analysis"
+    path = _rollout(tmp_path, [_meta(), _user("Write a report."),
+                             _assistant("Report delivered."), analysis])
+    excerpt = ledger.build_excerpt(ledger.parse_session(str(path)), 10000)
+    assert "Report delivered." in excerpt
+    assert "internal analysis sentinel" not in excerpt
+
+
+def test_codex_screenshot_wrappers_preserve_the_users_correction(tmp_path):
+    prompt = ('<image name=[Image #1] path="/tmp/one.png">\n\n</image>\n'
+              '<image name=[Image #2] path="/tmp/two.png">\n\n</image>\n'
+              'The completed report is missing from memory.')
+    path = _rollout(tmp_path, [_meta(), _user(prompt), _assistant("Saved its location.")])
+    info = ledger.parse_session(str(path))
+    assert info["prompts"] == ["The completed report is missing from memory."]
+    assert "Saved its location." in ledger.build_excerpt(info, 10000)

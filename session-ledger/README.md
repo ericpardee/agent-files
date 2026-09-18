@@ -6,6 +6,12 @@ to a single markdown ledger file, newest first. A nightly sweep catches
 sessions the SessionEnd hook missed, and a weekly "dream" pass consolidates
 the file.
 
+Excerpts pair each typed user prompt with its latest public assistant response.
+Earlier completed work remains visible when a later turn changes topic. When
+the excerpt exceeds its character cap, space is shared across turns with more
+room reserved for responses than prompts. Tool output and internal reasoning
+are excluded, and summaries treat omitted details as unknown.
+
 Portable across machines: all machine-specific values (including the ledger
 destination) live in `~/.claude/session-ledger.env`, which is never
 committed. On a Mac with Obsidian, point `LEDGER_FILE` at a vault note; on a
