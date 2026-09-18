@@ -32,9 +32,20 @@ Scopes:
 
 ## Step 2: Run Codex at max reasoning
 
-Reuse the skill-codex invocation pattern. Do not pass `-m`; `~/.codex/config.toml`
-already defaults to the latest Codex model. Force max reasoning explicitly and
-append `2>/dev/null` to suppress thinking tokens.
+Do not pass `-m`; `~/.codex/config.toml` already defaults to the latest Codex model.
+Force max reasoning explicitly and append `2>/dev/null` to suppress thinking tokens.
+
+Two invocation rules that will otherwise cost you a wasted run:
+
+- **Always redirect stdin from `/dev/null`.** `codex exec` appends stdin to the
+  prompt, so without the redirect it blocks on an open terminal and looks
+  indistinguishable from a long reasoning pass. It will sit there until it is killed.
+- **`codex exec review` accepts a custom PROMPT only when no scope flag is given.**
+  `--base`, `--commit`, and `--uncommitted` each conflict with the `[PROMPT]`
+  positional and fail arg parsing with `the argument '--base <BRANCH>' cannot be used
+  with '[PROMPT]'`. Verified against codex-cli 0.146.1. Because this gate depends on
+  its reviewer contract, use `codex exec` with an explicit scope instruction rather
+  than `codex exec review`, as shown below.
 
 Reviewer contract - pass this prompt verbatim (it is the instructions argument):
 
@@ -51,24 +62,44 @@ re-raise that finding. If there are no qualifying findings, output exactly:
 NO FINDINGS.
 ```
 
-Commands by scope:
+Write the contract plus a scope instruction to a file, then run one command for
+every scope. Appending the scope in prose is what replaces the unusable `--base`
+and `--commit` flags.
 
 ```bash
-# default: branch vs default branch
-codex exec review --base BASE -c model_reasoning_effort="xhigh" "<contract>" 2>/dev/null
+# Build the prompt: contract, then the scope, then the file list.
+{
+  cat contract.txt
+  echo
+  echo "SCOPE: review only <one of the scope lines below>."
+  echo "Inspect it with the git command given. Read each changed file in full,"
+  echo "not just the diff hunks. Changed files:"
+  git diff --name-only "$(git merge-base origin/BASE HEAD)" | sed 's/^/  /'
+} > prompt.txt
 
-# staged / uncommitted
-codex exec review --uncommitted -c model_reasoning_effort="xhigh" "<contract>" 2>/dev/null
-
-# single commit
-codex exec review --commit <sha> -c model_reasoning_effort="xhigh" "<contract>" 2>/dev/null
-
-# explicit paths: append to the contract:
-# "Restrict the review strictly to these paths: <paths>. Ignore all other files."
-codex exec review --base BASE -c model_reasoning_effort="xhigh" "<contract + path restriction>" 2>/dev/null
+codex exec --sandbox read-only -c model_reasoning_effort="xhigh" \
+  "$(cat prompt.txt)" </dev/null 2>/dev/null
 ```
 
+Scope lines to substitute:
+
+| Scope | Scope line to write into the prompt |
+| --- | --- |
+| default | `the changes on the current branch relative to BASE; see them with git diff BASE...HEAD` |
+| staged / uncommitted | `the uncommitted changes; see them with git diff HEAD and git status --porcelain` |
+| single commit | `the changes introduced by commit <sha>; see them with git show <sha>` |
+| explicit paths | the default line, plus `Restrict the review strictly to these paths: <paths>. Ignore all other files.` |
+
+`codex exec` runs read-only by default, but pass `--sandbox read-only` explicitly so
+the gate's read-only guarantee does not depend on a default.
+
 If `codex` exits non-zero, stop and report; do not count a failed run as a round.
+An empty stdout with `Reading additional input from stdin...` on stderr means the
+`</dev/null` redirect was omitted; that is not a round either.
+
+When you only need Codex's own default review instructions and no contract,
+`codex exec review --base BASE </dev/null 2>/dev/null` is the supported form. That
+is not sufficient for this gate, which depends on the severity contract.
 
 ## Step 3: Dispose of every finding
 

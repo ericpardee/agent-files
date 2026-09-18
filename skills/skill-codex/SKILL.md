@@ -18,34 +18,50 @@ description: Use when the user asks to run Codex CLI (codex exec, codex resume) 
 
 3. When continuing a previous session, use resume syntax:
    ```
-   codex exec resume --last "your prompt here" 2>/dev/null
+   codex exec resume --last "your prompt here" </dev/null 2>/dev/null
    ```
    Add `--skip-git-repo-check` if running outside a git repo.
    Do not use configuration flags when resuming unless explicitly requested - the session inherits original settings.
 
 4. For code reviews, prefer the dedicated review subcommand:
    ```
-   codex exec review --base main "Review instructions" 2>/dev/null
+   codex exec review --base main </dev/null 2>/dev/null
    ```
    Options: `--uncommitted` (staged/unstaged/untracked), `--base <branch>`, `--commit <sha>`.
 
+   **The scope flags cannot be combined with custom review instructions.** Each of
+   `--base`, `--commit`, and `--uncommitted` conflicts with the `[PROMPT]` positional
+   and fails arg parsing (`the argument '--base <BRANCH>' cannot be used with
+   '[PROMPT]'`, verified on codex-cli 0.146.1). So pick one:
+   - Codex's default review instructions on a specific scope: use `codex exec review`
+     with the scope flag and no prompt, as above.
+   - Your own review instructions: use plain `codex exec` and state the scope in the
+     prompt, e.g. `codex exec --sandbox read-only "<instructions>. Review only the
+     changes on this branch relative to main; see them with git diff main...HEAD."`
+
 5. **IMPORTANT**: Append `2>/dev/null` to suppress thinking tokens (stderr). Only show stderr if debugging is needed.
 
-6. Run the command, summarize the outcome for the user.
+6. **Always redirect stdin from `/dev/null`.** `codex exec` appends stdin to the
+   prompt, so without the redirect it blocks on an open terminal and looks exactly
+   like a slow reasoning pass, hanging until killed. The tell is empty stdout with
+   `Reading additional input from stdin...` on stderr.
 
-7. **After Codex completes**, inform the user: "You can resume this Codex session at any time by saying 'codex resume'."
+7. Run the command, summarize the outcome for the user.
+
+8. **After Codex completes**, inform the user: "You can resume this Codex session at any time by saying 'codex resume'."
 
 ## Quick Reference
 
 | Use case | Command example |
 | --- | --- |
-| Code review | `codex exec review --base main 2>/dev/null` |
-| Review uncommitted | `codex exec review --uncommitted 2>/dev/null` |
-| Review a commit | `codex exec review --commit abc123 2>/dev/null` |
-| Apply edits | `codex exec --sandbox workspace-write --full-auto "Refactor..." 2>/dev/null` |
-| Full access | `codex exec --sandbox danger-full-access --full-auto "..." 2>/dev/null` |
-| Resume | `codex exec resume --last "continue with..." 2>/dev/null` |
-| Different dir | `codex exec -C /path/to/dir --sandbox read-only "..." 2>/dev/null` |
+| Code review | `codex exec review --base main </dev/null 2>/dev/null` |
+| Review uncommitted | `codex exec review --uncommitted </dev/null 2>/dev/null` |
+| Review a commit | `codex exec review --commit abc123 </dev/null 2>/dev/null` |
+| Review with your own instructions | `codex exec --sandbox read-only "<instructions> Review only <scope>." </dev/null 2>/dev/null` |
+| Apply edits | `codex exec --sandbox workspace-write --full-auto "Refactor..." </dev/null 2>/dev/null` |
+| Full access | `codex exec --sandbox danger-full-access --full-auto "..." </dev/null 2>/dev/null` |
+| Resume | `codex exec resume --last "continue with..." </dev/null 2>/dev/null` |
+| Different dir | `codex exec -C /path/to/dir --sandbox read-only "..." </dev/null 2>/dev/null` |
 
 ## Following Up
 
@@ -60,7 +76,7 @@ When codex identifies **HIGH severity** bugs during PR reviews, automatically fi
 2. **Auto-fix workflow**:
    ```bash
    # Resume codex session with fix instructions
-   codex exec resume --last --sandbox workspace-write --full-auto "Fix all HIGH severity bugs identified in the review. For each bug, apply the necessary code changes." 2>/dev/null
+   codex exec resume --last --sandbox workspace-write --full-auto "Fix all HIGH severity bugs identified in the review. For each bug, apply the necessary code changes." </dev/null 2>/dev/null
    ```
 3. **Commit fixes**: After codex applies fixes, commit with descriptive message
 4. **Report**: Tell user what was fixed
