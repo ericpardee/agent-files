@@ -16,9 +16,20 @@ adhere to DavidAnson markdownlint
 - never use "this isn't just..., it's..." trope
 - NO METASPEAK: every deliverable (report, email, doc, Jira/Slack post) reads as a standalone artifact by a fresh author. Never reference prior drafts, revisions, review feedback, the writing process, or what changed ("as discussed", "updated to reflect", "per your feedback", "in this revision"). Before presenting any deliverable, self-check for these and strip them.
 
-# Repository content
+# Public repositories
 
-This repository is public. Write every file so a stranger can use it:
+Before writing a person's name, a machine path, an employer, or an internal
+host into any file under git, check whether the repository is public. Do it
+without credentials, so the answer does not depend on which account is logged
+in or which org owns the repo:
+
+    url="$(git remote get-url origin | sed -E 's#^(ssh://)?git@([^:/]+)[:/]#https://\2/#; s#\.git$##')"
+    curl -s -o /dev/null --max-time 10 -w '%{http_code}\n' "$url"
+
+200 means public. 404 or any 3xx means private or gone. Anything else (000,
+5xx, 429) means unknown: ask the User before writing.
+
+If it is public, write every file so a stranger can use it:
 
 - Refer to the person as "User", never by name, and use they/them.
 - Use generic paths: `~/...`, `$HOME`, or a configurable variable. Never
