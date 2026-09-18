@@ -31,7 +31,7 @@ if not URL or not OUT:
 # First existing browser binary wins. Real browsers clear anti-bot checks that
 # Playwright's bundled headless Chromium does not.
 BROWSER_CANDIDATES = [
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    "/Applications/Brave Origin.app/Contents/MacOS/Brave Origin",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
 ]

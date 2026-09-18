@@ -18,6 +18,10 @@
 #     network_access = true
 # Swap the flag below if you prefer that. With danger-full-access the run is
 # fully unattended, which is what this fallback is for.
+#
+# The Codex fallback is opt-in. It runs only when RENDER_ALLOW_CODEX=1 is set;
+# otherwise a failed fast path exits 3 with a message instead of handing a
+# full-access agent a headed browser.
 
 set -euo pipefail
 
@@ -55,9 +59,17 @@ if [[ "${RENDER_NO_FAST:-0}" != "1" ]] && command -v uv >/dev/null 2>&1; then
       exit 0
     fi
   fi
-  echo "Fast render path did not succeed; falling back to Codex..." >&2
+  echo "Fast render path did not succeed." >&2
   tail -n 5 "$WORKDIR/fast.log" >&2 || true
 fi
+
+if [[ "${RENDER_ALLOW_CODEX:-0}" != "1" ]]; then
+  echo "ERROR: the Codex fallback is disabled. It runs codex with" >&2
+  echo "--dangerously-bypass-approvals-and-sandbox and drives a headed browser." >&2
+  echo "Re-run with RENDER_ALLOW_CODEX=1 to allow it." >&2
+  exit 3
+fi
+echo "Falling back to Codex (RENDER_ALLOW_CODEX=1)..." >&2
 
 # Build the instruction for Codex. The single deliverable is the output file, so
 # we can ignore Codex's own stdout chatter and just read the file afterwards.
@@ -72,8 +84,8 @@ Requirements:
 - Prefer Playwright. If a real system browser is installed, launch THAT rather
   than bundled Chromium, because a real browser binary clears anti-bot checks far
   more reliably. On macOS try, in order: Google Chrome (Playwright
-  channel: 'chrome'), then Brave via executablePath
-  '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser'. Only fall back
+  channel: 'chrome'), then Brave Origin via executablePath
+  '/Applications/Brave Origin.app/Contents/MacOS/Brave Origin'. Only fall back
   to bundled Chromium (install with 'npx --yes playwright@latest install chromium')
   if no system browser launches.
 - Set a realistic desktop User-Agent and a 1280x800 (or larger) viewport.

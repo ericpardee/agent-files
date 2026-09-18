@@ -22,15 +22,17 @@ empty shells.
 The script has two paths:
 
 1. **Fast path (default).** A pre-written Playwright renderer (`scripts/render.py`)
-   drives a real system browser (Brave, then Chrome, then Chromium) in
+   drives a real system browser (Brave Origin, then Chrome, then Chromium) in
    `--headless=new` mode with `--disable-blink-features=AutomationControlled`.
    No visible window opens, it takes ~5-10s, and that automation flag is what
    clears Cloudflare's non-interactive "checking your browser" challenge that
    plain headless Chromium gets blocked by.
-2. **Codex fallback.** Only if the fast path fails (browser missing, still
-   challenged, empty content) does it hand the URL to `codex exec`, which is far
-   slower because it boots the full Codex agent to write and run its own browser
-   script. Set `RENDER_NO_FAST=1` to force this path.
+2. **Codex fallback (opt-in).** Only if the fast path fails (browser missing,
+   still challenged, empty content) and `RENDER_ALLOW_CODEX=1` is set does it
+   hand the URL to `codex exec`, which is far slower because it boots the full
+   Codex agent to write and run its own browser script. Without that variable a
+   failed fast path exits 3 with a message and nothing else runs. Set
+   `RENDER_NO_FAST=1` to skip the fast path.
 
 ## When to use this skill
 
@@ -58,9 +60,11 @@ bash ~/.claude/skills/codex-web-render/scripts/render-url.sh "<URL>"
 ```
 
 Use the printed text as the page content for the rest of your task. The script
-tries the fast Playwright path first and only escalates to Codex if it fails, so
-a typical run is ~5-10s with no window. The first run may be a few seconds slower
-while `uv` resolves the `playwright` package into its cache.
+tries the fast Playwright path first, so a typical run is ~5-10s with no window.
+The first run may be a few seconds slower while `uv` resolves the `playwright`
+package into its cache. If it exits 3 saying the Codex fallback is disabled,
+report that to the User; only re-run with `RENDER_ALLOW_CODEX=1` if they say so,
+because that path gives Codex full access and a headed browser.
 
 ## Maintaining the problem-sites list
 
@@ -77,13 +81,13 @@ domain like `example.com`, or a path prefix like `example.com/app`).
 
 ## Prerequisites
 
-- Fast path: `uv` on PATH, plus a real Chromium-based browser installed (Brave,
-  Chrome, or Chromium). `uv` pulls in `playwright` on demand; no separate
+- Fast path: `uv` on PATH, plus a real Chromium-based browser installed (Brave
+  Origin, Chrome, or Chromium). `uv` pulls in `playwright` on demand; no separate
   browser download is needed because it reuses the system browser binary.
 - Fallback path: the Codex CLI installed and authenticated (`npm i -g
   @openai/codex` then `codex login`). Only needed if the fast path can't render.
   The script runs `codex exec --dangerously-bypass-approvals-and-sandbox` so the
-  run is unattended.
+  run is unattended, and only when `RENDER_ALLOW_CODEX=1` is set.
 
 ## Notes and limitations
 
