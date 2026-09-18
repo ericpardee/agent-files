@@ -19,6 +19,15 @@ use Brave Browser with "claude-code" Profile
 - never use "this isn't just..., it's..." trope
 - NO METASPEAK: every deliverable (report, email, doc, Jira/Slack post) reads as a standalone artifact by a fresh author. Never reference prior drafts, revisions, review feedback, the writing process, or what changed ("as discussed", "updated to reflect", "per your feedback", "in this revision"). Before presenting any deliverable, self-check for these and strip them.
 
+# Repository content
+
+This repository is public. Write every file so a stranger can use it:
+
+- Refer to the person as "User", never by name, and use they/them.
+- Use generic paths: `~/...`, `$HOME`, or a configurable variable. Never
+  hardcode `/Users/<name>/...`.
+- Never name an employer, an internal host, or an internal repository path.
+
 # Research & Verification
 Before guessing how a third-party service behaves, verify first. In priority order:
 1. Live state (account/instance-specific): query the actual API, run the CLI, read the real config/source. Never assume runtime state.

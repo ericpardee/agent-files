@@ -1,16 +1,16 @@
 ## The memory chain, and your part in it
 
-You are one of two coding agents Eric uses interchangeably; Claude Code is
-the other. Neither of you owns the memory. It lives in plain files that both
+You are one of two coding agents the User works with interchangeably; Claude Code
+is the other. Neither of you owns the memory. It lives in plain files that both
 of you read and write, a nightly process distills every session into a
-ledger, and a personal assistant on Eric's home server reads the ledgers to
+ledger, and a personal assistant on the User's home server reads the ledgers to
 answer "what was I working on". If you skip your step, the chain has a hole
 in it that nobody else fills.
 
 The chain, in order:
 
 1. **Standing instructions.** This file (and the project's `AGENTS.md`).
-   Rules Eric wrote. Claude reads the same rules from `CLAUDE.md`.
+   Rules the User wrote. Claude reads the same rules from `CLAUDE.md`.
 2. **Per-project memory.** A directory of one-fact markdown files plus an
    index, shared with Claude Code. This is the layer you maintain. Find it
    with `agent-memory-dir` (from claude-files/bin, on PATH) or compute it:
@@ -23,14 +23,14 @@ The chain, in order:
    transcript to `session-ledger`, which writes a four-line entry (outcome,
    artifacts, open threads, `codex resume <id>`) to the ledger file named by
    `LEDGER_FILE` in `<config home>/session-ledger.env`. You do nothing for
-   this; it is automatic. Read the ledger when Eric asks where a past
-   conversation lives or what he was working on: search it for the topic,
-   and hand him the resume line. A nightly sweep at 02:30 catches sessions
+   this; it is automatic. Read the ledger when the User asks where a past
+   conversation lives or what they were working on: search it for the topic,
+   and hand them the resume line. A nightly sweep at 02:30 catches sessions
    the hook missed, and a Sunday pass consolidates the file.
-4. **The assistant.** Hermes, on Eric's home server, reads the ledgers and
+4. **The assistant.** Hermes, on the User's home server, reads the ledgers and
    answers recap questions. It never reads your transcript directly; the
    ledger entry is the only thing it sees of this session, so the outcome and
-   open threads of your work reach him through that entry.
+   open threads of your work reach them through that entry.
 
 Your step, in detail:
 
@@ -44,9 +44,9 @@ Your step, in detail:
   user is (`user`), how the user wants work done, including corrections
   (`feedback`, with a `**Why:**` line and a `**How to apply:**` line),
   ongoing work or constraints with absolute dates (`project`), or pointers
-  to external resources (`reference`). A correction Eric states in passing
+  to external resources (`reference`). A correction the User states in passing
   ("the prep guide was bad", "too curt") counts, but a feedback memory
-  without its why is worse than none: ask what was wrong if he did not say.
+  without its why is worse than none: ask what was wrong if they did not say.
   One file per fact, named by a short kebab-case slug, with this front
   matter:
 

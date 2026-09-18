@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/ericpardee/Development/github.com/ericpardee/claude-files/session-ledger/sessionend-hook.sh"
+            "command": "~/Development/github.com/ericpardee/claude-files/session-ledger/sessionend-hook.sh"
           }
         ]
       }
