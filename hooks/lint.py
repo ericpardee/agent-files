@@ -25,6 +25,7 @@ SHAPES = [
     (r"\bAIza[A-Za-z0-9_\-]{30,}", "Google API key"),
     (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "private key material"),
     (r"(?i)\b(?:password|passwd|secret|token|api_?key|client_secret)\b\s*[:=]\s*['\"]?[A-Za-z0-9+/_.\-]{16,}", "inline credential assignment"),
+    (r"\b[A-Z0-9_]*(?:KEY|TOKEN|PASSWORD|SECRET)\s*=\s*['\"]?[A-Za-z0-9+/_.\-]{16,}", "env-style credential assignment"),
     (r"(?<![\w.])/(?:Users|home)/[A-Za-z0-9._-]+/", "absolute home path; use ~ or $HOME"),
 ]
 
@@ -65,10 +66,14 @@ def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--message":
         scan("commit message", open(sys.argv[2], encoding="utf-8", errors="replace").read(), findings)
     else:
-        for rel in staged_files():
+        files = staged_files()
+        if len(sys.argv) == 2 and sys.argv[1] == "--all":
+            files = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split("\0")
+            files = [f for f in files if f]
+        for rel in files:
             if rel == "hooks/lint.py" or rel == "hooks/blocked-words.txt":
                 continue
-            blob = subprocess.run(["git", "show", ":" + rel], cwd=ROOT, capture_output=True).stdout
+            blob = subprocess.run(["git", "show", ":" + rel], cwd=ROOT, capture_output=True).stdout if "--all" not in sys.argv else open(os.path.join(ROOT, rel), "rb").read()
             if b"\0" in blob[:4096]:
                 continue
             scan(rel, blob.decode("utf-8", errors="replace"), findings)
