@@ -1,4 +1,4 @@
-# Problem sites — URLs that WebFetch cannot render.
+# Problem sites: URLs that WebFetch cannot render.
 #
 # One URL substring per line. If a target URL CONTAINS any line below, skip
 # WebFetch and render with Codex instead (scripts/render-url.sh).

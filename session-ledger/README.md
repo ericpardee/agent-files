@@ -128,9 +128,10 @@ place: duplicate or related entries merge, resolved threads get marked
 closed, and every `claude --resume <id>` line is preserved. It also puts a
 short `## Promote to memory` section at the top with durable facts worth
 adding to long-term memory, for human review. The previous version is kept
-at `LEDGER_FILE.bak`. A model response that is malformed, or that drops any
-`claude --resume <id>` present in the input, leaves the ledger untouched and
-the run exits non-zero.
+at `LEDGER_FILE.bak`. A malformed response leaves the ledger untouched and
+the run exits non-zero. A response that merely drops some entries (large
+ledgers reliably lose a few) is repaired: the missing entries are restored
+verbatim from the original file and the pass proceeds.
 
 ## Cost
 

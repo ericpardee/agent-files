@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# render-url.sh — Render a JavaScript-heavy or bot-protected URL by delegating to
+# render-url.sh: render a JavaScript-heavy or bot-protected URL by delegating to
 # the Codex CLI, which drives a real (headed) browser and extracts the page's
 # visible text. Prints the rendered text to stdout.
 #

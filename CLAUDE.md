@@ -2,7 +2,7 @@
 
 always use ripgrep instead of grep
 always use fd instead of find
-always use git commit --no-gpg-sign when commiting
+always use git commit --no-gpg-sign when committing
 always prefer brew over npm for system tools
 
 # Coding

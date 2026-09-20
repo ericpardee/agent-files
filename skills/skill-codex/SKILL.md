@@ -3,105 +3,67 @@ name: codex
 description: Use when the user asks to run Codex CLI (codex exec, codex resume) or references OpenAI Codex for code analysis, refactoring, or automated editing
 ---
 
-# Codex Skill Guide
+# Codex CLI
 
-## Running a Task
+Reference for driving `codex exec` correctly from an agent session. For a
+full review gate with a fix-or-rebut loop, use the `codex-gate` skill instead.
 
-1. If unclear, ask the user (via AskUserQuestion) what they want reviewed or changed.
+## Invocation rules
 
-2. Assemble the codex command with appropriate options:
-   - `-m, --model gpt-5.6-sol` (default model; pair with `-c model_reasoning_effort="xhigh"`. Fallback if unavailable: `gpt-5.6-terra`, also at xhigh)
-   - `-c model_reasoning_effort="xhigh"` (default reasoning effort; options: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`)
-   - `--sandbox <mode>` - use `read-only` for reviews, `workspace-write` for edits, `danger-full-access` for network/broad access
-   - `--full-auto` - only for write operations, not needed for read-only
-   - `-C, --cd <DIR>` - run from a different directory
+- Do not pass `-m`. `~/.codex/config.toml` sets the default model; override it
+  only when the user names a model. Pair reviews with
+  `-c model_reasoning_effort="xhigh"` (options: `none`, `minimal`, `low`,
+  `medium`, `high`, `xhigh`).
+- Always redirect stdin from `/dev/null`. `codex exec` appends stdin to the
+  prompt, so without the redirect it blocks on an open terminal and looks like
+  a slow reasoning pass until killed. The tell is empty stdout with
+  `Reading additional input from stdin...` on stderr.
+- Append `2>/dev/null` to hide thinking tokens (stderr). Show stderr only when
+  debugging.
+- Sandbox: `--sandbox read-only` for reviews, `workspace-write` for edits,
+  `danger-full-access` only for work that needs the network. `--full-auto`
+  applies to write runs only. Ask before `--full-auto`, `danger-full-access`,
+  or `--skip-git-repo-check` unless the user already granted it.
+- `-C <dir>` runs from another directory; `--skip-git-repo-check` is needed
+  outside a repository.
+- Pass `-o <file>` when the final message must survive scrollback.
 
-3. When continuing a previous session, use resume syntax:
-   ```
-   codex exec resume --last "your prompt here" </dev/null 2>/dev/null
-   ```
-   Add `--skip-git-repo-check` if running outside a git repo.
-   Do not use configuration flags when resuming unless explicitly requested - the session inherits original settings.
+## Reviews
 
-4. For code reviews, prefer the dedicated review subcommand:
-   ```
-   codex exec review --base main </dev/null 2>/dev/null
-   ```
-   Options: `--uncommitted` (staged/unstaged/untracked), `--base <branch>`, `--commit <sha>`.
+`codex exec review` accepts a scope flag (`--base <branch>`, `--commit <sha>`,
+`--uncommitted`) or a custom prompt, never both; combining them fails arg
+parsing with `the argument '--base <BRANCH>' cannot be used with '[PROMPT]'`
+(codex-cli 0.146 through 0.154). So:
 
-   **The scope flags cannot be combined with custom review instructions.** Each of
-   `--base`, `--commit`, and `--uncommitted` conflicts with the `[PROMPT]` positional
-   and fails arg parsing (`the argument '--base <BRANCH>' cannot be used with
-   '[PROMPT]'`, verified on codex-cli 0.146.1). So pick one:
-   - Codex's default review instructions on a specific scope: use `codex exec review`
-     with the scope flag and no prompt, as above.
-   - Your own review instructions: use plain `codex exec` and state the scope in the
-     prompt, e.g. `codex exec --sandbox read-only "<instructions>. Review only the
-     changes on this branch relative to main; see them with git diff main...HEAD."`
+- Codex's own review instructions on a scope:
+  `codex exec review --base main </dev/null 2>/dev/null`
+- Your own instructions: plain `codex exec` with the scope stated in the
+  prompt, for example `codex exec --sandbox read-only "<instructions>. Review
+  only the changes on this branch relative to main; see them with git diff
+  main...HEAD." </dev/null 2>/dev/null`
 
-5. **IMPORTANT**: Append `2>/dev/null` to suppress thinking tokens (stderr). Only show stderr if debugging is needed.
+## Resuming
 
-6. **Always redirect stdin from `/dev/null`.** `codex exec` appends stdin to the
-   prompt, so without the redirect it blocks on an open terminal and looks exactly
-   like a slow reasoning pass, hanging until killed. The tell is empty stdout with
-   `Reading additional input from stdin...` on stderr.
+`codex exec resume --last "<prompt>" </dev/null 2>/dev/null` continues the
+previous session with its original model, reasoning effort, and sandbox; do not
+pass configuration flags when resuming unless the user asks. After any run,
+tell the user the session can be resumed this way.
 
-7. Run the command, summarize the outcome for the user.
+## Quick reference
 
-8. **After Codex completes**, inform the user: "You can resume this Codex session at any time by saying 'codex resume'."
-
-## Quick Reference
-
-| Use case | Command example |
+| Use case | Command |
 | --- | --- |
-| Code review | `codex exec review --base main </dev/null 2>/dev/null` |
-| Review uncommitted | `codex exec review --uncommitted </dev/null 2>/dev/null` |
-| Review a commit | `codex exec review --commit abc123 </dev/null 2>/dev/null` |
+| Review a branch | `codex exec review --base main </dev/null 2>/dev/null` |
+| Review uncommitted work | `codex exec review --uncommitted </dev/null 2>/dev/null` |
+| Review one commit | `codex exec review --commit abc123 </dev/null 2>/dev/null` |
 | Review with your own instructions | `codex exec --sandbox read-only "<instructions> Review only <scope>." </dev/null 2>/dev/null` |
-| Apply edits | `codex exec --sandbox workspace-write --full-auto "Refactor..." </dev/null 2>/dev/null` |
-| Full access | `codex exec --sandbox danger-full-access --full-auto "..." </dev/null 2>/dev/null` |
-| Resume | `codex exec resume --last "continue with..." </dev/null 2>/dev/null` |
-| Different dir | `codex exec -C /path/to/dir --sandbox read-only "..." </dev/null 2>/dev/null` |
+| Apply edits | `codex exec --sandbox workspace-write --full-auto "Refactor ..." </dev/null 2>/dev/null` |
+| Resume | `codex exec resume --last "continue with ..." </dev/null 2>/dev/null` |
+| Another directory | `codex exec -C /path --sandbox read-only "..." </dev/null 2>/dev/null` |
 
-## Following Up
+## After a run
 
-- When output includes actionable findings or the user might want changes applied, offer to resume the session.
-- When resuming, pass the new prompt as an argument - the session keeps its original model, reasoning effort, and sandbox mode.
-
-## Auto-Fixing Critical Bugs in PR Reviews
-
-When codex identifies **HIGH severity** bugs during PR reviews, automatically fix them without asking for permission:
-
-1. **Identify severity**: Parse codex output for "High" or "HIGH" severity bugs
-2. **Auto-fix workflow**:
-   ```bash
-   # Resume codex session with fix instructions
-   codex exec resume --last --sandbox workspace-write --full-auto "Fix all HIGH severity bugs identified in the review. For each bug, apply the necessary code changes." </dev/null 2>/dev/null
-   ```
-3. **Commit fixes**: After codex applies fixes, commit with descriptive message
-4. **Report**: Tell user what was fixed
-
-**Severity guidelines:**
-- **HIGH**: Auto-fix (data loss, security holes, correctness bugs, broken functionality)
-- **MEDIUM**: Ask user first (performance issues, tech debt, unclear impact)
-- **LOW**: Report only (style suggestions, minor improvements)
-
-**Safety notes:**
-- Only auto-fix in review/PR context (not exploratory coding)
-- Always commit fixes immediately after applying
-- User can revert commits if needed
-- If codex fix fails or is unclear, stop and ask user
-
-**Example:**
-```
-Codex found: "High - Date constraints never reach Qdrant"
-→ Automatically resume codex to fix
-→ Commit: "Fix: Push date constraints to Qdrant query"
-→ Report: "Fixed HIGH severity date filtering bug in query.py"
-```
-
-## Error Handling
-
-- Stop and report failures when `codex` exits non-zero; request direction before retrying.
-- Before using `--full-auto`, `--sandbox danger-full-access`, or `--skip-git-repo-check`, ask for user permission unless already given.
-- When output includes warnings or partial results, summarize and ask how to proceed.
+Summarize the outcome. When the output has actionable findings, offer to
+resume the session to apply them; do not apply or commit changes on the
+user's behalf without being asked. Stop and report when `codex` exits non-zero
+or returns partial results, and ask how to proceed.

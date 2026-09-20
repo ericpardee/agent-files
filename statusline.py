@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Claude Code status line: account badge, model and effort, output style,
+directory and branch on line one; context bar, cost, and elapsed time on line two.
+
+Reads the status JSON Claude Code passes on stdin. Wire it in settings.json:
+    "statusLine": {"type": "command", "command": "python3 ~/path/to/statusline.py"}
+"""
 import json, sys, subprocess, os
 
 
@@ -67,7 +73,7 @@ mins, secs = duration_ms // 60000, (duration_ms % 60000) // 1000
 try:
     branch = subprocess.check_output(['git', 'branch', '--show-current'], text=True, stderr=subprocess.DEVNULL).strip()
     branch = f" | 🌿 {branch}" if branch else ""
-except:
+except (OSError, subprocess.CalledProcessError):
     branch = ""
 
 print(f"{account_badge()}{CYAN}[{model}{effort}]{RESET}{style} 📁 {directory}{branch}")
