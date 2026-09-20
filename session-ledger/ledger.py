@@ -309,7 +309,7 @@ def encode_project_dir(path):
     """Mirror Claude Code's cwd -> project dir encoding.
 
     Verified against real dirs: every non-alphanumeric character becomes '-'
-    (e.g. /Users/x/Development/github.com/y -> -Users-x-Development-github-com-y).
+    (e.g. /Users/x/Development/github.com/y -> -Users-x-Development-github-com-y).  # lint-allow: placeholder path
     """
     return re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(path))
 

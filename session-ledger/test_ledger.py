@@ -23,7 +23,7 @@ def _rollout(tmp_path, records, name=None, sid=CODEX_ID):
 
 
 def _meta(**over):
-    payload = {"id": CODEX_ID, "cwd": "/Users/eric/proj", "originator": "codex-tui",
+    payload = {"id": CODEX_ID, "cwd": "/Users/eric/proj", "originator": "codex-tui",  # lint-allow: placeholder path
                "source": "cli", "thread_source": "user"}
     payload.update(over)
     return {"timestamp": "2026-09-07T02:37:16.889Z", "type": "session_meta", "payload": payload}
@@ -56,7 +56,7 @@ def test_codex_rollout_parses_prompts_reply_cwd_and_id(tmp_path):
     info = ledger.parse_session(str(path))
     assert info["tool"] == "codex"
     assert info["session_id"] == CODEX_ID
-    assert info["cwd"] == "/Users/eric/proj"
+    assert info["cwd"] == "/Users/eric/proj"  # lint-allow: placeholder path
     assert info["prompts"] == ["Fix the flaky broker test", "what is wrong here"]
     assert info["last_assistant"] == "Done: lock added, tests pass."
     assert info["title"] == "Fix the flaky broker test"
@@ -79,7 +79,7 @@ def test_scripted_and_subagent_codex_runs_are_excluded(tmp_path, meta):
 def test_claude_transcript_still_parses(tmp_path):
     path = tmp_path / "abc.jsonl"
     path.write_text("\n".join(json.dumps(r) for r in [
-        {"type": "user", "sessionId": "abc", "cwd": "/Users/eric/repo", "timestamp": "2026-09-01T10:00:00Z",
+        {"type": "user", "sessionId": "abc", "cwd": "/Users/eric/repo", "timestamp": "2026-09-01T10:00:00Z",  # lint-allow: placeholder path
          "message": {"role": "user", "content": "add a test"}},
         {"type": "assistant", "timestamp": "2026-09-01T10:01:00Z",
          "message": {"role": "assistant", "content": [{"type": "text", "text": "Added."}]}},
