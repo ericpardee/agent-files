@@ -95,7 +95,7 @@ variables with the same names override the file.
 | `PROJECTS_DIR` | `~/.claude/projects` | Claude Code transcript location |
 | `MIN_NEW_PROMPTS` | `1` | New user prompts needed before redistilling |
 | `MAX_EXCERPT_CHARS` | `10000` | Cap on excerpt sent to the model |
-| `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY` | unset | When both are set, any failure exit (all distills failed, dream not applied) sends a Pushover alert titled `session-ledger failed` naming the install |
+| `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY` | unset | When both are set, a failed sweep or dream sends a Pushover alert titled `session-ledger failed` naming the install. `run-alerted.sh`, the launchd entry point, also alerts when `ledger.py` could not run or crashed before reporting (python missing, Xcode license, traceback). Per-session hook failures never alert; the nightly sweep retries them |
 | `CODEX_SESSIONS_DIR` | `$CODEX_HOME/sessions` or `~/.codex/sessions` | Codex rollouts to sweep; `none` disables |
 | `DISTILL_TOOL` | `claude` | `claude` (claude -p) or `codex` (codex exec) |
 | `CODEX_MODEL` | unset | Model for `codex exec` distills; unset uses Codex's configured model |

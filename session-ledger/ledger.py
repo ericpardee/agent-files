@@ -38,6 +38,9 @@ STATE_FILE = os.path.join(CLAUDE_DIR, "session-ledger.state.json")
 LOCK_DIR = os.path.join(CLAUDE_DIR, "session-ledger.lock")
 LOG_FILE = os.path.join(CLAUDE_DIR, "session-ledger.log")
 RUNS_DIR = os.path.join(CLAUDE_DIR, "session-ledger-runs")
+# Touched when a Pushover alert goes out, so run-alerted.sh (the launchd
+# entry point) knows not to send a second one for the same failure.
+ALERTED_MARKER = os.path.join(CLAUDE_DIR, "session-ledger.alerted")
 
 LEDGER_HEADER = "# Coding agent session ledger"
 # Ledgers written before Codex support carry the old header; both are valid.
@@ -159,6 +162,9 @@ def read_env_file():
 
 
 _ALERTED = False
+# Only the scheduled modes alert; a single --session distill that fails is
+# retried by the nightly sweep and would just be noise.
+_ALERTS_ENABLED = False
 
 
 def notify_failure(msg):
@@ -168,7 +174,7 @@ def notify_failure(msg):
     load. Sends at most once per process. Never raises.
     """
     global _ALERTED
-    if _ALERTED:
+    if _ALERTED or not _ALERTS_ENABLED:
         return
     _ALERTED = True
     try:
@@ -187,6 +193,8 @@ def notify_failure(msg):
         req = urllib.request.Request("https://api.pushover.net/1/messages.json", data=data)
         with urllib.request.urlopen(req, timeout=10) as resp:
             log("pushover alert sent (HTTP %d)" % resp.status)
+        with open(ALERTED_MARKER, "w") as fh:
+            fh.write(datetime.datetime.now().isoformat(timespec="seconds") + "\n")
     except Exception as exc:  # alerting must never mask the original failure
         log("pushover alert failed: %s" % exc)
 
@@ -1072,6 +1080,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
+    global _ALERTS_ENABLED
+    _ALERTS_ENABLED = bool(args.sweep or args.dream)
     cfg = load_config()
 
     if args.dry_run:

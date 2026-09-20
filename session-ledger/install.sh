@@ -61,7 +61,7 @@ else
   echo "$ENV_FILE already exists, leaving it alone"
 fi
 
-chmod +x "$SCRIPT_DIR/ledger.py" "$SCRIPT_DIR/sessionend-hook.sh"
+chmod +x "$SCRIPT_DIR/ledger.py" "$SCRIPT_DIR/sessionend-hook.sh" "$SCRIPT_DIR/run-alerted.sh"
 
 # (b) install launchd agents from templates.
 # The default install keeps the bare label; a secondary install (running

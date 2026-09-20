@@ -8,13 +8,14 @@
          agent's file access to its program. A python3 program is refused
          iCloud Drive paths (~/Library/Mobile Documents) with EPERM; the same
          python3 exec'd from /bin/bash is allowed, so a LEDGER_FILE inside an
-         iCloud-synced Obsidian vault works. -->
+         iCloud-synced Obsidian vault works. run-alerted.sh runs python3 as
+         a child of that bash and sends a Pushover alert for any failure
+         ledger.py could not report itself (python missing, Xcode license
+         exit 69, a crash before its own alert). -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>-c</string>
-        <string>exec /usr/bin/python3 "$0" "$@"</string>
-        <string>__REPO_DIR__/session-ledger/ledger.py</string>
+        <string>__REPO_DIR__/session-ledger/run-alerted.sh</string>
         <string>--dream</string>
     </array>
     <key>StartCalendarInterval</key>
