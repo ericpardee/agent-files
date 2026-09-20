@@ -81,7 +81,7 @@ Then point your global `CLAUDE.md` and `AGENTS.md` at the hub with the snippet i
 
 ## What stays private on purpose
 
-The hubs, the ledgers, the per-project memory directories, and any candid notes about people never appear in this repository. What you see here is the shape of the system; the content is the point of keeping it.
+The hubs, the ledgers, the per-project memory directories, and any candid notes about people never appear in this repository. A pre-commit guard (`hooks/`, enabled with `git config core.hooksPath hooks`) refuses any commit carrying a token shape, an absolute home path, or a word from `hooks/blocked-words.txt`, so nothing private can arrive here by accident. What you see here is the shape of the system; the content is the point of keeping it.
 
 ## Links
 

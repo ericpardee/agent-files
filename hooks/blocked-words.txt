@@ -1,0 +1,2 @@
+# One regular expression per line, case-insensitive. Any match blocks the commit.
+# Names that must never appear in this public repository (employers, internal hosts, private repos).
