@@ -19,7 +19,15 @@ The chain, in order:
    current directory outside a repository) with every non-alphanumeric
    character replaced by `-`. A memory you save here is read by Claude's next
    session in the same project, and a memory Claude saved is waiting for you.
-3. **The session ledger.** When this session ends, a hook hands your
+3. **External memory hubs.** One repository per identity, built from the
+   `external-memory/` pattern in claude-files, holds the current state of
+   every live initiative: `INDEX.md` always, one spoke per workstream. When
+   the standing instructions name a hub, pull it and read `INDEX.md` at
+   session start, and append to the spoke, lint, commit, and push before
+   ending any session that changed that initiative's state. This is the
+   layer that answers "what am I working on" across repositories and
+   machines.
+4. **The session ledger.** When this session ends, a hook hands your
    transcript to `session-ledger`, which writes a four-line entry (outcome,
    artifacts, open threads, `codex resume <id>`) to the ledger file named by
    `LEDGER_FILE` in `<config home>/session-ledger.env`. You do nothing for
@@ -27,7 +35,7 @@ The chain, in order:
    conversation lives or what they were working on: search it for the topic,
    and hand them the resume line. A nightly sweep at 02:30 catches sessions
    the hook missed, and a Sunday pass consolidates the file.
-4. **The assistant.** Hermes, on the User's home server, reads the ledgers and
+5. **The assistant.** Hermes, on the User's home server, reads the ledgers and
    answers recap questions. It never reads your transcript directly; the
    ledger entry is the only thing it sees of this session, so the outcome and
    open threads of your work reach them through that entry.

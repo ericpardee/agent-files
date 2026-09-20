@@ -44,3 +44,10 @@ Before guessing how a third-party service behaves, verify first. In priority ord
 4. Provide links when posting, e.g. Jira Service Management, so Users can see the data, logs, code, documentation, etc.
 
 Show the source you verified against before proposing a fix.
+
+# External memory hub
+
+Personal work has a private hub repository at `~/Development/github.com/ericpardee/personal-memory`, built from the `external-memory/` pattern in the claude-files repo. It holds the current state of every live personal initiative; the work sandbox has its own hub and the two never mix.
+
+- Session start: `git -C ~/Development/github.com/ericpardee/personal-memory pull --rebase --quiet`, read its `INDEX.md`, and load the `initiatives/` spoke for the initiative in play.
+- Session end, if that initiative's state changed: append a dated line to the spoke's State log, move its Active initiatives row if status changed, run `python3 scripts/lint.py`, commit, push, per that repo's `CLAUDE.md`.

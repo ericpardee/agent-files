@@ -1,0 +1,3 @@
+#!/bin/sh
+# Enforced lint: line caps, secret shapes, blocked vocabulary.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/lint.py"

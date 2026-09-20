@@ -1,0 +1,3 @@
+# One regular expression per line (case-insensitive). Any match blocks the commit.
+# Use this for content that belongs somewhere else on purpose, for example
+# candid notes about people, or anything a synced clone must never carry.

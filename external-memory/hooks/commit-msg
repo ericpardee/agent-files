@@ -1,0 +1,3 @@
+#!/bin/sh
+# Same secret and vocabulary checks as pre-commit, applied to the commit message.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/lint.py" --message "$1"
