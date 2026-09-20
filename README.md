@@ -50,11 +50,14 @@ Only one step needs discipline: the append at the end of a session that changed 
 
 ## What is in this repository
 
-- `session-ledger/`: the hook, the sweep, the weekly dream pass, the installer, and the tests. Portable: machine-specific values live in an untracked env file.
-- `external-memory/`: the hub pattern with a scaffold script, a generic lint, git hooks, and templates for `CLAUDE.md`, `INDEX.md`, `ACCESS.md`, `LOG.md`, and an initiative spoke.
-- `codex/`: the memory section shared into Codex's `AGENTS.md`, so Codex follows the same chain Claude does.
-- `bin/agent-memory-dir`: resolves the per-project memory directory both agents share.
-- `CLAUDE.md`, `AGENTS.md`, `settings.json`, `statusline.py`, `skills/`: the standing rules and tooling as installed.
+- `session-ledger/`: the SessionEnd hook, the nightly sweep, the weekly dream pass, the installer, and the tests. Portable: machine-specific values live in an untracked env file; launchd-managed on macOS.
+- `external-memory/`: the hub pattern with `scaffold.sh`, a lint that runs as a git hook (line caps, secret shapes, blocked vocabulary), and templates for `CLAUDE.md`, `INDEX.md`, `ACCESS.md`, `LOG.md`, and an initiative spoke.
+- `codex/AGENTS-memory-section.md`: the section of Codex's `AGENTS.md` that describes the whole chain and Codex's step in it.
+- `bin/agent-memory-dir`: prints the per-project memory directory both agents share. `bin/claude-title` copies a session's generated title for `/rename`.
+- `skills/`: `codex-gate` (cross-model review gate with a fix-or-rebut loop), `codex` (Codex CLI reference), `advanced-prompt-improver`, `deliverable-check`, `codex-web-render`, `freeing-disk-space`.
+- `statusline.py`: two-line status bar with an account badge that flags a wrong-account session.
+- `settings.json`: the personal Claude Code settings that wire the hook, the status line, and plugins.
+- `CLAUDE.md`, `AGENTS.md`: the standing rules as installed.
 
 ## Adopt it
 
@@ -64,12 +67,17 @@ cd ~/Development/github.com/ericpardee/agent-files
 
 # layer 4: the ledger (hook, nightly sweep, weekly dream)
 session-ledger/install.sh ~/path/to/ledger.md
+python3 session-ledger/ledger.py --seed --days 14
 
 # layer 3: a private hub for your own initiatives
 external-memory/scaffold.sh ~/path/to/my-memory "My"
+
+# skills and helpers
+ln -s "$PWD"/skills/* ~/.claude/skills/
+ln -s "$PWD"/bin/* ~/.local/bin/
 ```
 
-Then point your global `CLAUDE.md` and `AGENTS.md` at the hub with the snippet in `external-memory/README.md`, and let the per-project memory (layer 2) fill itself.
+Then point your global `CLAUDE.md` and `AGENTS.md` at the hub with the snippet in `external-memory/README.md`, and let the per-project memory (layer 2) fill itself. Each directory's README covers configuration, secondary installs (a second config dir for a work identity), and uninstall. MIT licensed.
 
 ## What stays private on purpose
 
@@ -77,5 +85,4 @@ The hubs, the ledgers, the per-project memory directories, and any candid notes 
 
 ## Links
 
-- [Claude Code Local Docs](https://github.com/ericbuess/claude-code-docs)
-- [Solatis Agents based off Southbridge Research's analysis of Claude Code prompts](https://github.com/solatis/claude-config)
+- [Claude Code Local Docs](https://github.com/ericbuess/claude-code-docs), the `PreToolUse` hook in `settings.json`
