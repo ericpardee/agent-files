@@ -56,7 +56,7 @@ Only one step needs discipline: the append at the end of a session that changed 
 - `bin/agent-memory-dir`: prints the per-project memory directory both agents share. `bin/claude-title` copies a session's generated title for `/rename`.
 - `skills/`: `codex-gate` (cross-model review gate with a fix-or-rebut loop), `codex` (Codex CLI reference), `advanced-prompt-improver`, `deliverable-check`, `codex-web-render`, `freeing-disk-space`.
 - `statusline.py`: two-line status bar with an account badge that flags a wrong-account session.
-- `settings.json`: the personal Claude Code settings that wire the hook, the status line, and plugins.
+- `settings.json`: the personal Claude Code settings that wire the hook, the status line, and plugins. On the machine that owns this repo it is the live file (`~/.claude/settings.json` is a symlink to it); the pre-commit guard is what makes that safe.
 - `CLAUDE.md`, `AGENTS.md`: the standing rules as installed.
 
 ## Adopt it
