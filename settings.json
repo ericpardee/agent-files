@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/Development/github.com/ericpardee/claude-files/session-ledger/sessionend-hook.sh"
+            "command": "~/Development/github.com/ericpardee/agent-files/session-ledger/sessionend-hook.sh"
           }
         ]
       }
@@ -29,7 +29,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "python3 ~/Development/github.com/ericpardee/claude-files/statusline.py"
+    "command": "python3 ~/Development/github.com/ericpardee/agent-files/statusline.py"
   },
   "enabledPlugins": {
     "frontend-design@claude-plugins-official": true,

@@ -13,14 +13,14 @@ The chain, in order:
    Rules the User wrote. Claude reads the same rules from `CLAUDE.md`.
 2. **Per-project memory.** A directory of one-fact markdown files plus an
    index, shared with Claude Code. This is the layer you maintain. Find it
-   with `agent-memory-dir` (from claude-files/bin, on PATH) or compute it:
+   with `agent-memory-dir` (from agent-files/bin, on PATH) or compute it:
    `<config home>/projects/<key>/memory/` where config home is
    `$CLAUDE_CONFIG_DIR` or `~/.claude`, and key is the git root (or the
    current directory outside a repository) with every non-alphanumeric
    character replaced by `-`. A memory you save here is read by Claude's next
    session in the same project, and a memory Claude saved is waiting for you.
 3. **External memory hubs.** One repository per identity, built from the
-   `external-memory/` pattern in claude-files, holds the current state of
+   `external-memory/` pattern in agent-files, holds the current state of
    every live initiative: `INDEX.md` always, one spoke per workstream. When
    the standing instructions name a hub, pull it and read `INDEX.md` at
    session start, and append to the spoke, lint, commit, and push before

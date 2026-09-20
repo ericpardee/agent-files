@@ -20,8 +20,8 @@ work Mac, point it at any plain markdown file.
 ## Install on a new machine
 
 ```bash
-git clone git@github.com:ericpardee/claude-files.git ~/Development/github.com/ericpardee/claude-files
-cd ~/Development/github.com/ericpardee/claude-files/session-ledger
+git clone git@github.com:ericpardee/agent-files.git ~/Development/github.com/ericpardee/agent-files
+cd ~/Development/github.com/ericpardee/agent-files/session-ledger
 ./install.sh /path/to/ledger.md
 python3 ledger.py --seed --days 14
 ```
@@ -91,10 +91,11 @@ variables with the same names override the file.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `LEDGER_FILE` | required | Markdown file entries are appended to |
-| `MODEL` | `claude-haiku-4-5-20251001` | Model for distill and dream calls |
+| `MODEL` | `claude-sonnet-5` | Model for distill and dream calls |
 | `PROJECTS_DIR` | `~/.claude/projects` | Claude Code transcript location |
 | `MIN_NEW_PROMPTS` | `1` | New user prompts needed before redistilling |
 | `MAX_EXCERPT_CHARS` | `10000` | Cap on excerpt sent to the model |
+| `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY` | unset | When both are set, any failure exit (all distills failed, dream not applied) sends a Pushover alert titled `session-ledger failed` naming the install |
 | `CODEX_SESSIONS_DIR` | `$CODEX_HOME/sessions` or `~/.codex/sessions` | Codex rollouts to sweep; `none` disables |
 | `DISTILL_TOOL` | `claude` | `claude` (claude -p) or `codex` (codex exec) |
 | `CODEX_MODEL` | unset | Model for `codex exec` distills; unset uses Codex's configured model |
@@ -133,7 +134,7 @@ the run exits non-zero.
 
 ## Cost
 
-Haiku by default. Roughly one short call per active session per day (the
+Sonnet by default. Roughly one short call per active session per day (the
 excerpt is capped at 10k characters), plus one larger call per week for the
 dream pass. A day with five active sessions costs a few cents.
 

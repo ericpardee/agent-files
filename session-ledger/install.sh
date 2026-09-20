@@ -28,7 +28,11 @@ if [ ! -f "$ENV_FILE" ]; then
 LEDGER_FILE=$LEDGER_FILE
 
 # Model used for distillation and the weekly dream pass.
-#MODEL=claude-haiku-4-5-20251001
+#MODEL=claude-sonnet-5
+
+# Optional: Pushover alert on any failure exit (both required).
+#PUSHOVER_APP_TOKEN=
+#PUSHOVER_USER_KEY=
 
 # Where Claude Code stores session transcripts.
 #PROJECTS_DIR=$HOME/.claude/projects

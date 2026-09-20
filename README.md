@@ -1,4 +1,4 @@
-# claude-files
+# agent-files
 
 Configuration and tooling shared by Claude Code and Codex CLI: standing rules (`CLAUDE.md`, `AGENTS.md`), skills, a status line, the session ledger, and the external-memory pattern. Both agents read the same rules and the same memory, so switching tools loses nothing.
 

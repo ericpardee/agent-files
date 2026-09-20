@@ -26,6 +26,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 
 HOME = os.path.expanduser("~")
 CLAUDE_DIR = os.path.realpath(
@@ -49,7 +51,7 @@ DISTILL_TIMEOUT_SECONDS = 300
 DREAM_TIMEOUT_SECONDS = 1800
 
 DEFAULTS = {
-    "MODEL": "claude-haiku-4-5-20251001",
+    "MODEL": "claude-sonnet-5",
     "PROJECTS_DIR": os.path.join(CLAUDE_DIR, "projects"),
     "MIN_NEW_PROMPTS": "1",
     "MAX_EXCERPT_CHARS": "10000",
@@ -70,6 +72,10 @@ DEFAULTS = {
     # session, and after a successful dream (for example a script that commits
     # and pushes the ledger). Runs via the shell, 300s timeout, exit logged.
     "POST_SWEEP_CMD": "",
+    # Optional Pushover alert on any failure exit (a sweep whose distills all
+    # failed, a dream pass that could not be applied). Both keys required.
+    "PUSHOVER_APP_TOKEN": "",
+    "PUSHOVER_USER_KEY": "",
 }
 
 NOISE_PREFIXES = (
@@ -135,12 +141,8 @@ def log(msg):
         pass
 
 
-def die(msg, code=1):
-    sys.stderr.write("session-ledger: %s\n" % msg)
-    sys.exit(code)
-
-
-def load_config():
+def read_env_file():
+    """KEY=VALUE pairs from the per-install env file, over DEFAULTS."""
     cfg = dict(DEFAULTS)
     if os.path.isfile(ENV_FILE):
         with open(ENV_FILE, encoding="utf-8") as fh:
@@ -153,9 +155,55 @@ def load_config():
                 val = val.strip().strip('"').strip("'")
                 if key:
                     cfg[key] = val
+    return cfg
+
+
+_ALERTED = False
+
+
+def notify_failure(msg):
+    """Pushover alert for a failure exit, when both Pushover keys are configured.
+
+    Reads the env file directly so it works from die() before or after config
+    load. Sends at most once per process. Never raises.
+    """
+    global _ALERTED
+    if _ALERTED:
+        return
+    _ALERTED = True
+    try:
+        cfg = read_env_file()
+        token = os.environ.get("PUSHOVER_APP_TOKEN") or cfg.get("PUSHOVER_APP_TOKEN")
+        user = os.environ.get("PUSHOVER_USER_KEY") or cfg.get("PUSHOVER_USER_KEY")
+        if not token or not user:
+            return
+        data = urllib.parse.urlencode({
+            "token": token,
+            "user": user,
+            "title": "session-ledger failed",
+            "message": ("%s: %s" % (CLAUDE_DIR, msg))[:1000],
+            "priority": 1,
+        }).encode()
+        req = urllib.request.Request("https://api.pushover.net/1/messages.json", data=data)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            log("pushover alert sent (HTTP %d)" % resp.status)
+    except Exception as exc:  # alerting must never mask the original failure
+        log("pushover alert failed: %s" % exc)
+
+
+def die(msg, code=1):
+    sys.stderr.write("session-ledger: %s\n" % msg)
+    if code:
+        notify_failure(msg)
+    sys.exit(code)
+
+
+def load_config():
+    cfg = read_env_file()
     for key in ("LEDGER_FILE", "MODEL", "PROJECTS_DIR", "MIN_NEW_PROMPTS", "MAX_EXCERPT_CHARS",
                 "POST_SWEEP_CMD", "CODEX_SESSIONS_DIR", "DISTILL_TOOL", "CODEX_MODEL",
-                "CODEX_REASONING_EFFORT", "BACKFILL_MAX_AGE_DAYS"):
+                "CODEX_REASONING_EFFORT", "BACKFILL_MAX_AGE_DAYS",
+                "PUSHOVER_APP_TOKEN", "PUSHOVER_USER_KEY"):
         if os.environ.get(key):
             cfg[key] = os.environ[key]
     if not cfg.get("LEDGER_FILE"):
@@ -940,6 +988,31 @@ def mode_session(cfg, arg, dry_run):
         sys.exit(1)
 
 
+def split_entries(content):
+    """The ledger's entry blocks (each starting with a '## ' heading), in file order."""
+    return [b for b in re.split(r"(?m)^(?=## )", content) if b.startswith("## ")]
+
+
+def restore_lost_entries(content, out, lost):
+    """Append, verbatim, the original entries whose Resume ids the rewrite dropped.
+
+    The consolidation model reliably loses a few entries when it rewrites a
+    large ledger. Rather than discard the whole pass, keep its output and put
+    the dropped entries back from the original file so no resume line is ever
+    lost. Restored entries land at the bottom, out of date order.
+    """
+    restored = []
+    covered = set()
+    for block in split_entries(content):
+        ids = set(RESUME_ID_RE.findall(block))
+        if ids & lost and not ids <= covered:
+            restored.append(block.rstrip() + "\n")
+            covered |= ids
+    if not restored:
+        return out
+    return out.rstrip() + "\n\n" + "\n".join(restored)
+
+
 def mode_dream(cfg, dry_run):
     ledger = cfg["LEDGER_FILE"]
     if not os.path.isfile(ledger):
@@ -969,8 +1042,14 @@ def mode_dream(cfg, dry_run):
     lost = set(RESUME_ID_RE.findall(content)) - set(RESUME_ID_RE.findall(out))
     if lost:
         short = ", ".join(sorted(i[:8] for i in lost))
-        log("dream output lost %d Resume id(s) (%s), ledger left untouched" % (len(lost), short))
-        die("dream output lost %d Resume id(s): %s; ledger left untouched" % (len(lost), short))
+        out = restore_lost_entries(content, out, lost)
+        still = lost - set(RESUME_ID_RE.findall(out))
+        if still:
+            log("dream output lost %d Resume id(s) that could not be restored (%s), ledger left untouched"
+                % (len(still), ", ".join(sorted(i[:8] for i in still))))
+            die("dream output lost %d Resume id(s): %s; ledger left untouched" % (len(still), short))
+        log("dream output dropped %d entr%s (%s); restored verbatim at the bottom of the ledger"
+            % (len(lost), "y" if len(lost) == 1 else "ies", short))
     shutil.copy2(ledger, ledger + ".bak")
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(ledger)), prefix=".ledger.")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
