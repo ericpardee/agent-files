@@ -686,19 +686,28 @@ def entry_date(info):
     return datetime.date.today().isoformat()
 
 
-def run_claude(prompt, cfg, timeout=DISTILL_TIMEOUT_SECONDS):
-    """Run the configured distiller on ``prompt`` (stdin). Returns (text, error)."""
+def run_claude(prompt, cfg, timeout=DISTILL_TIMEOUT_SECONDS, thinking=True):
+    """Run the configured distiller on ``prompt`` (stdin). Returns (text, error).
+
+    No tools, built-in or MCP: the answer must come back as the reply text,
+    and the transcripts in the prompt can carry untrusted instructions.
+    ``thinking=False`` turns extended thinking off for long verbatim rewrites:
+    thinking shares the output limit, and a reply that overflows it comes back
+    split across turns, of which claude -p prints only the last.
+    """
     os.makedirs(RUNS_DIR, exist_ok=True)
     if cfg.get("DISTILL_TOOL") == "codex":
         return _run_codex(prompt, cfg, timeout)
+    env = None if thinking else dict(os.environ, MAX_THINKING_TOKENS="0")
     try:
         proc = subprocess.run(
-            ["claude", "-p", "--model", cfg["MODEL"]],
+            ["claude", "-p", "--model", cfg["MODEL"], "--tools", "", "--disallowedTools", "mcp__*"],
             input=prompt,
             capture_output=True,
             text=True,
             cwd=RUNS_DIR,
             timeout=timeout,
+            env=env,
         )
     except FileNotFoundError:
         return None, "claude CLI not found on PATH"
@@ -764,6 +773,19 @@ def strip_code_fence(text):
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         t = "\n".join(lines).strip()
+    return t
+
+
+def drop_preamble(text):
+    """Drop chatter before the ledger header line ("I'll consolidate ...") and
+    a code fence left open below it. Text without a header line is returned as is."""
+    headers = "|".join(re.escape(h) for h in (LEDGER_HEADER,) + LEGACY_LEDGER_HEADERS)
+    m = re.search(r"(?m)^(?:%s)[ \t]*$" % headers, text)
+    if not m or m.start() == 0:
+        return text
+    t = text[m.start():].rstrip()
+    if t.endswith("\n```"):
+        t = t[:-4].rstrip()
     return t
 
 
@@ -1036,11 +1058,11 @@ def mode_dream(cfg, dry_run):
         entries = content.count("\n## ") + (1 if content.startswith("## ") else 0)
         print("dream dry-run: would consolidate %d entries in %s via %s" % (entries, ledger, cfg["MODEL"]))
         return
-    out, err = run_claude(prompt, cfg, timeout=DREAM_TIMEOUT_SECONDS)
+    out, err = run_claude(prompt, cfg, timeout=DREAM_TIMEOUT_SECONDS, thinking=False)
     if err:
         log("dream failed: %s" % err)
         die("dream failed: %s" % err)
-    out = strip_code_fence(out)
+    out = drop_preamble(strip_code_fence(out))
     if not out.startswith((LEDGER_HEADER,) + LEGACY_LEDGER_HEADERS) or "## " not in out:
         log("dream produced malformed output, ledger left untouched")
         die("dream output malformed, ledger left untouched")

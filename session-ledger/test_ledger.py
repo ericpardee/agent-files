@@ -162,6 +162,79 @@ def test_dream_accepts_the_legacy_header():
     assert ledger.LEDGER_HEADER == "# Coding agent session ledger"
 
 
+def _assert_no_tools(argv):
+    assert argv[argv.index("--tools") + 1] == ""
+    assert argv[argv.index("--disallowedTools") + 1] == "mcp__*"
+
+
+def test_dream_runs_claude_with_thinking_and_tools_off(tmp_path, monkeypatch):
+    # With thinking on, a 150 KB ledger rewrite spent the whole output limit
+    # thinking, the reply came back split across turns, and claude -p printed
+    # only the last fragment. With tools on, the model saved the rewrite with
+    # the Write tool instead of returning it and ended on a question. Either
+    # way the header check rejected the output as malformed.
+    path = tmp_path / "ledger.md"
+    content = ledger.LEDGER_HEADER + "\n\n## 2026-09-06 entry\n- Outcome: kept\n"
+    path.write_text(content)
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append((argv, kw))
+
+        class Proc:
+            returncode = 0
+            stdout = content
+            stderr = ""
+        return Proc()
+
+    monkeypatch.setattr(ledger.subprocess, "run", fake_run)
+    monkeypatch.setattr(ledger, "RUNS_DIR", str(tmp_path / "runs"))
+    monkeypatch.setattr(ledger, "LOG_FILE", str(tmp_path / "ledger.log"))
+    ledger.mode_dream({"LEDGER_FILE": str(path), "MODEL": "claude-sonnet-5"}, dry_run=False)
+    argv, kw = calls[0]
+    assert argv[:2] == ["claude", "-p"]
+    _assert_no_tools(argv)
+    assert kw["env"]["MAX_THINKING_TOKENS"] == "0"
+    assert kw["env"]["PATH"] == os.environ["PATH"]
+
+
+def test_dream_drops_chatter_before_the_header(tmp_path, monkeypatch):
+    # The rewrite itself was complete; the reply just opened with a sentence.
+    path = tmp_path / "ledger.md"
+    content = ledger.LEDGER_HEADER + "\n\n## 2026-09-06 entry\n- Outcome: kept\n"
+    path.write_text(content)
+    reply = "I'll consolidate the ledger, merging duplicate entries.\n\n" + content
+    monkeypatch.setattr(ledger, "run_claude", lambda *a, **k: (reply, None))
+    monkeypatch.setattr(ledger, "LOG_FILE", str(tmp_path / "ledger.log"))
+    ledger.mode_dream({"LEDGER_FILE": str(path), "MODEL": "claude-sonnet-5"}, dry_run=False)
+    assert path.read_text() == content
+    assert ledger.drop_preamble("Sure:\n```markdown\n" + content + "```\n") == content.rstrip()
+    assert ledger.drop_preamble("no header here") == "no header here"
+
+
+def test_distill_runs_claude_without_tools_in_the_default_environment(tmp_path, monkeypatch):
+    # The distiller only reads the prompt and answers; transcripts can carry
+    # untrusted text, so the model gets no tools to act on it.
+    calls = []
+
+    def fake_run(argv, **kw):
+        calls.append((argv, kw))
+
+        class Proc:
+            returncode = 0
+            stdout = "- Outcome: it worked"
+            stderr = ""
+        return Proc()
+
+    monkeypatch.setattr(ledger.subprocess, "run", fake_run)
+    monkeypatch.setattr(ledger, "RUNS_DIR", str(tmp_path))
+    out, err = ledger.run_claude("prompt", {"MODEL": "claude-sonnet-5"})
+    assert err is None and out == "- Outcome: it worked"
+    argv, kw = calls[0]
+    _assert_no_tools(argv)
+    assert kw.get("env") is None
+
+
 def test_codex_excerpt_keeps_completed_work_after_a_followup(tmp_path):
     delivered = "Created /tmp/research-report.md and delivered the analysis."
     path = _rollout(tmp_path, [
