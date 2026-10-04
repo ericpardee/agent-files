@@ -22,7 +22,8 @@ full review gate with a fix-or-rebut loop, use the `codex-gate` skill instead.
   debugging.
 - Sandbox: `--sandbox read-only` for reviews, `workspace-write` for edits,
   `danger-full-access` only for work that needs the network. `--full-auto`
-  applies to write runs only. Ask before `--full-auto`, `danger-full-access`,
+  was removed (codex-cli 0.160 rejects it with `unexpected argument`); a
+  `workspace-write` exec run edits without it. Ask before `danger-full-access`
   or `--skip-git-repo-check` unless the user already granted it.
 - `-C <dir>` runs from another directory; `--skip-git-repo-check` is needed
   outside a repository.
@@ -57,7 +58,7 @@ tell the user the session can be resumed this way.
 | Review uncommitted work | `codex exec review --uncommitted </dev/null 2>/dev/null` |
 | Review one commit | `codex exec review --commit abc123 </dev/null 2>/dev/null` |
 | Review with your own instructions | `codex exec --sandbox read-only "<instructions> Review only <scope>." </dev/null 2>/dev/null` |
-| Apply edits | `codex exec --sandbox workspace-write --full-auto "Refactor ..." </dev/null 2>/dev/null` |
+| Apply edits | `codex exec --sandbox workspace-write "Refactor ..." </dev/null 2>/dev/null` |
 | Resume | `codex exec resume --last "continue with ..." </dev/null 2>/dev/null` |
 | Another directory | `codex exec -C /path --sandbox read-only "..." </dev/null 2>/dev/null` |
 
