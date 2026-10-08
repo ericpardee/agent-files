@@ -33,6 +33,10 @@ LEDGER_FILE=$LEDGER_FILE
 # Optional: Pushover alert on any failure exit (both required).
 #PUSHOVER_APP_TOKEN=
 #PUSHOVER_USER_KEY=
+# Optional: send failures and a per-run heartbeat to an alert router instead of Pushover.
+#ALERT_ROUTER_URL=http://router-host:8650
+#ALERT_ROUTER_TOKEN=
+#INSTALL_LABEL=default
 
 # Where Claude Code stores session transcripts.
 #PROJECTS_DIR=$HOME/.claude/projects

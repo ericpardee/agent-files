@@ -299,3 +299,42 @@ def test_codex_screenshot_wrappers_preserve_the_users_correction(tmp_path):
     info = ledger.parse_session(str(path))
     assert info["prompts"] == ["The completed report is missing from memory."]
     assert "Saved its location." in ledger.build_excerpt(info, 10000)
+
+
+def test_router_post_spools_on_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(ledger, "SPOOL_FILE", str(tmp_path / "spool.jsonl"))
+    def boom(req, timeout=10): raise OSError("down")
+    monkeypatch.setattr(ledger.urllib.request, "urlopen", boom)
+    cfg = {"ALERT_ROUTER_URL": "http://r:8650", "ALERT_ROUTER_TOKEN": "t", "INSTALL_LABEL": "mac-personal"}
+    assert ledger.router_post(cfg, {"source": "session-ledger", "check": "mac-personal", "state": "fail", "detail": "x"}) is False
+    lines = (tmp_path / "spool.jsonl").read_text().splitlines()
+    assert len(lines) == 1 and '"check": "mac-personal"' in lines[0]
+
+
+def test_replay_spool_sends_and_clears(tmp_path, monkeypatch):
+    monkeypatch.setattr(ledger, "SPOOL_FILE", str(tmp_path / "spool.jsonl"))
+    (tmp_path / "spool.jsonl").write_text('{"source":"session-ledger","check":"a","state":"fail","detail":"old"}\n')
+    sent = []
+    class R:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b"{}"
+    def ok(req, timeout=10): sent.append(req.full_url); return R()
+    monkeypatch.setattr(ledger.urllib.request, "urlopen", ok)
+    cfg = {"ALERT_ROUTER_URL": "http://r:8650", "ALERT_ROUTER_TOKEN": "t"}
+    assert ledger.replay_spool(cfg) == 1
+    assert sent == ["http://r:8650/event"] and not (tmp_path / "spool.jsonl").exists()
+
+
+def test_notify_failure_prefers_router(tmp_path, monkeypatch):
+    monkeypatch.setattr(ledger, "_ALERTED", False)
+    monkeypatch.setattr(ledger, "_ALERTS_ENABLED", True)
+    monkeypatch.setattr(ledger, "ALERTED_MARKER", str(tmp_path / "alerted"))
+    monkeypatch.setattr(ledger, "read_env_file", lambda: {"ALERT_ROUTER_URL": "http://r:8650", "ALERT_ROUTER_TOKEN": "t",
+                                                            "PUSHOVER_APP_TOKEN": "pa", "PUSHOVER_USER_KEY": "pu"})
+    calls = []
+    monkeypatch.setattr(ledger, "router_post", lambda cfg, ev: calls.append(ev) or True)
+    ledger.notify_failure("boom")
+    assert calls and calls[0]["state"] == "fail" and calls[0]["source"] == "session-ledger"
+    assert (tmp_path / "alerted").exists()

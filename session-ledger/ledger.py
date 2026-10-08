@@ -41,6 +41,9 @@ RUNS_DIR = os.path.join(CLAUDE_DIR, "session-ledger-runs")
 # Touched when a Pushover alert goes out, so run-alerted.sh (the launchd
 # entry point) knows not to send a second one for the same failure.
 ALERTED_MARKER = os.path.join(CLAUDE_DIR, "session-ledger.alerted")
+# Events the alert router could not take (router down) wait here and are
+# resent at the start of the next scheduled run.
+SPOOL_FILE = os.path.join(CLAUDE_DIR, "session-ledger.spool.jsonl")
 
 LEDGER_HEADER = "# Coding agent session ledger"
 # Ledgers written before Codex support carry the old header; both are valid.
@@ -79,6 +82,12 @@ DEFAULTS = {
     # failed, a dream pass that could not be applied). Both keys required.
     "PUSHOVER_APP_TOKEN": "",
     "PUSHOVER_USER_KEY": "",
+    # Optional alert router: when ALERT_ROUTER_URL is set, failures and a
+    # per-run heartbeat go to POST <url>/event with a bearer token, and
+    # Pushover is not used. INSTALL_LABEL names this install in the router.
+    "ALERT_ROUTER_URL": "",
+    "ALERT_ROUTER_TOKEN": "",
+    "INSTALL_LABEL": "default",
 }
 
 NOISE_PREFIXES = (
@@ -167,6 +176,69 @@ _ALERTED = False
 _ALERTS_ENABLED = False
 
 
+def router_post(cfg, event):
+    """POST one event to the alert router named in cfg; spool it on any failure. Never raises."""
+    url = (cfg.get("ALERT_ROUTER_URL") or "").rstrip("/")
+    if not url:
+        return False
+    body = json.dumps(event).encode()
+    req = urllib.request.Request(url + "/event", data=body, headers={
+        "Content-Type": "application/json", "Authorization": "Bearer %s" % cfg.get("ALERT_ROUTER_TOKEN", "")})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if 200 <= resp.status < 300:
+                return True
+    except Exception as exc:
+        log("router post failed: %s" % exc)
+    try:
+        with open(SPOOL_FILE, "a") as fh:
+            fh.write(json.dumps(event) + "\n")
+    except OSError:
+        pass
+    return False
+
+
+def replay_spool(cfg):
+    """Resend spooled events; drop the ones that deliver. Returns the number delivered."""
+    try:
+        lines = open(SPOOL_FILE).read().splitlines()
+    except OSError:
+        return 0
+    url = (cfg.get("ALERT_ROUTER_URL") or "").rstrip("/")
+    keep, sent = [], 0
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        req = urllib.request.Request(url + "/event", data=json.dumps(ev).encode(), headers={
+            "Content-Type": "application/json", "Authorization": "Bearer %s" % cfg.get("ALERT_ROUTER_TOKEN", "")})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if 200 <= resp.status < 300:
+                    sent += 1
+                    continue
+        except Exception:
+            pass
+        keep.append(line)
+    if keep:
+        with open(SPOOL_FILE, "w") as fh:
+            fh.write("\n".join(keep) + "\n")
+    else:
+        try:
+            os.remove(SPOOL_FILE)
+        except OSError:
+            pass
+    return sent
+
+
+def send_heartbeat(cfg):
+    """One heartbeat per scheduled run so the router can notice a silent install."""
+    if cfg.get("ALERT_ROUTER_URL"):
+        router_post(cfg, {"source": "session-ledger", "check": cfg.get("INSTALL_LABEL") or "default",
+                          "kind": "heartbeat", "state": "ok", "detail": "scheduled run finished"})
+
+
 def notify_failure(msg):
     """Pushover alert for a failure exit, when both Pushover keys are configured.
 
@@ -179,6 +251,13 @@ def notify_failure(msg):
     _ALERTED = True
     try:
         cfg = read_env_file()
+        if cfg.get("ALERT_ROUTER_URL"):
+            router_post(cfg, {"source": "session-ledger", "check": cfg.get("INSTALL_LABEL") or "default",
+                              "state": "fail", "detail": ("%s: %s" % (CLAUDE_DIR, msg))[:1000],
+                              "human_required": False, "fix_hint": "read session-ledger.log on that machine"})
+            with open(ALERTED_MARKER, "w") as fh:
+                fh.write(datetime.datetime.now().isoformat(timespec="seconds") + "\n")
+            return
         token = os.environ.get("PUSHOVER_APP_TOKEN") or cfg.get("PUSHOVER_APP_TOKEN")
         user = os.environ.get("PUSHOVER_USER_KEY") or cfg.get("PUSHOVER_USER_KEY")
         if not token or not user:
@@ -211,7 +290,8 @@ def load_config():
     for key in ("LEDGER_FILE", "MODEL", "PROJECTS_DIR", "MIN_NEW_PROMPTS", "MAX_EXCERPT_CHARS",
                 "POST_SWEEP_CMD", "CODEX_SESSIONS_DIR", "DISTILL_TOOL", "CODEX_MODEL",
                 "CODEX_REASONING_EFFORT", "BACKFILL_MAX_AGE_DAYS",
-                "PUSHOVER_APP_TOKEN", "PUSHOVER_USER_KEY"):
+                "PUSHOVER_APP_TOKEN", "PUSHOVER_USER_KEY",
+                "ALERT_ROUTER_URL", "ALERT_ROUTER_TOKEN", "INSTALL_LABEL"):
         if os.environ.get(key):
             cfg[key] = os.environ[key]
     if not cfg.get("LEDGER_FILE"):
@@ -1105,6 +1185,8 @@ def main():
     global _ALERTS_ENABLED
     _ALERTS_ENABLED = bool(args.sweep or args.dream)
     cfg = load_config()
+    if _ALERTS_ENABLED and not args.dry_run:
+        replay_spool(cfg)
 
     if args.dry_run:
         locked = True  # no writes happen, no lock needed
@@ -1125,6 +1207,8 @@ def main():
     finally:
         if not args.dry_run:
             release_lock()
+        if _ALERTS_ENABLED and not args.dry_run:
+            send_heartbeat(cfg)
 
 
 if __name__ == "__main__":

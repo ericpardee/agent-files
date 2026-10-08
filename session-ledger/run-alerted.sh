@@ -1,7 +1,8 @@
 #!/bin/bash
 # launchd entry point for the scheduled modes. Runs ledger.py as a child of
 # this bash (macOS TCC then allows iCloud Drive paths, see the plist comment)
-# and sends a Pushover alert for any failure ledger.py could not report itself:
+# and reports any failure ledger.py could not report itself (to the alert router when
+# ALERT_ROUTER_URL is set, else Pushover):
 # python3 missing or refusing to start (an unaccepted Xcode license exits 69),
 # or a crash before ledger.py reached its own alert.
 set -u
@@ -17,6 +18,18 @@ rc=$?
 
 # ledger.py already alerted for this run: its marker is newer than our start.
 if [ -f "$marker" ] && [ "$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker")" -ge "$start" ]; then
+  exit "$rc"
+fi
+
+rurl=$(sed -n 's/^ALERT_ROUTER_URL=//p' "$cdir/session-ledger.env" 2>/dev/null | tail -1)
+rtok=$(sed -n 's/^ALERT_ROUTER_TOKEN=//p' "$cdir/session-ledger.env" 2>/dev/null | tail -1)
+label=$(sed -n 's/^INSTALL_LABEL=//p' "$cdir/session-ledger.env" 2>/dev/null | tail -1)
+if [ -n "$rurl" ]; then
+  recent=$(tail -5 "$logf" 2>/dev/null)
+  payload=$(printf '%s' "$recent" | /usr/bin/python3 -c 'import json,sys; print(json.dumps({"source":"session-ledger","check":sys.argv[1] or "default","state":"fail","human_required":False,"detail":"ledger.py exited "+sys.argv[2]+" before it could report. Recent log: "+sys.stdin.read()[:800]}))' "$label" "$rc")
+  curl -s -o /dev/null --max-time 10 -H "Authorization: Bearer $rtok" -H "Content-Type: application/json" \
+    --data "$payload" "${rurl%/}/event" \
+    && echo "$(date +%Y-%m-%dT%H:%M:%S) router alert sent by run-alerted.sh (exit $rc)" >>"$logf"
   exit "$rc"
 fi
 
