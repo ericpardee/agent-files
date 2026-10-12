@@ -338,3 +338,82 @@ def test_notify_failure_prefers_router(tmp_path, monkeypatch):
     ledger.notify_failure("boom")
     assert calls and calls[0]["state"] == "fail" and calls[0]["source"] == "session-ledger"
     assert (tmp_path / "alerted").exists()
+
+
+def _claude_turns(tmp_path, stamped_prompts):
+    """A Claude transcript with one user prompt and one reply per timestamp."""
+    records = []
+    for n, (ts, prompt) in enumerate(stamped_prompts):
+        user = {"type": "user", "message": {"role": "user", "content": prompt}, "timestamp": ts}
+        if n == 0:
+            user.update(sessionId="abcdef12-0000-0000-0000-000000000000", cwd="/tmp/project")
+        records += [user, {"type": "assistant", "timestamp": ts,
+                           "message": {"role": "assistant", "content": [{"type": "text", "text": "Done: " + prompt}]}}]
+    path = tmp_path / "abcdef12.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+    return ledger.parse_session(str(path))
+
+
+@pytest.fixture
+def pacific(monkeypatch):
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
+    import time
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_excerpt_marks_each_local_day(tmp_path, pacific):
+    # Both prompts fall on 2026-10-11 in UTC; in Pacific time the first is the evening before.
+    info = _claude_turns(tmp_path, [("2026-10-11T03:00:00.000Z", "Plan the benchmark runs"),
+                                    ("2026-10-11T18:00:00.000Z", "Run them on the GPU")])
+    excerpt = ledger.build_excerpt(info, 10000)
+    assert excerpt.index("--- DAY 2026-10-10 ---") < excerpt.index("Plan the benchmark runs")
+    assert excerpt.index("Plan the benchmark runs") < excerpt.index("--- DAY 2026-10-11 ---")
+    assert excerpt.index("--- DAY 2026-10-11 ---") < excerpt.index("Run them on the GPU")
+    assert excerpt.count("--- DAY") == 2
+
+
+def test_distill_writes_an_on_line_for_each_recent_day(tmp_path, pacific, monkeypatch):
+    stamps = ["2026-10-0%dT18:00:00.000Z" % d for d in (6, 7, 8, 9)]
+    info = _claude_turns(tmp_path, [(ts, "step %d" % n) for n, ts in enumerate(stamps)])
+    prompts = []
+    reply = "\n".join([
+        "- Outcome: Benchmarks ran.", "- Artifacts: none", "- Open threads: none",
+        "- On 2026-10-09: Ran the GPU pass", "  and wrote the notes.",
+        "- On 2026-10-08: Ran the CPU pass.",
+        "- On 2026-10-12: Invented a day.", "  More invention.",
+        "- On 2026-10-07: Set up the harness.",
+        "- On 2026-10-06: Too old to keep.",
+    ])
+    monkeypatch.setattr(ledger, "run_claude", lambda prompt, cfg: (prompts.append(prompt), (reply, None))[1])
+    entry, err = ledger.distill_session(info, {"MAX_EXCERPT_CHARS": 10000})
+    assert err is None
+    assert "2026-10-09, 2026-10-08, 2026-10-07" in prompts[0]
+    assert "2026-10-06," not in prompts[0]
+    lines = entry.splitlines()
+    assert lines[3:7] == ["- Open threads: none",
+                          "- On 2026-10-09: Ran the GPU pass and wrote the notes.",
+                          "- On 2026-10-08: Ran the CPU pass.",
+                          "- On 2026-10-07: Set up the harness."]
+    assert lines[7].startswith("- Resume: ")
+    assert "Invent" not in entry and "Too old" not in entry
+
+
+def test_a_transcript_without_timestamps_gets_no_on_lines(tmp_path, monkeypatch):
+    info = _claude_turns(tmp_path, [(None, "add a test")])
+    prompts = []
+    monkeypatch.setattr(ledger, "run_claude", lambda prompt, cfg: (prompts.append(prompt), ("- Outcome: Added.", None))[1])
+    entry, err = ledger.distill_session(info, {"MAX_EXCERPT_CHARS": 10000})
+    assert err is None
+    assert "--- DAY" not in ledger.build_excerpt(info, 10000)
+    assert "- On " not in prompts[0] and "- On " not in entry
+
+
+def test_the_sweep_also_runs_in_the_evening():
+    import plistlib
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "com.claude-session-ledger.nightly.plist"), "rb") as fh:
+        times = plistlib.load(fh)["StartCalendarInterval"]
+    assert {(t["Hour"], t["Minute"]) for t in times} == {(2, 30), (19, 30)}

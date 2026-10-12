@@ -1,16 +1,22 @@
 # session-ledger
 
 Automatic catalog of every Claude Code and Codex CLI session. Each session gets a short
-distilled entry (outcome, artifacts, open threads, resume command) appended
-to a single markdown ledger file, newest first. A nightly sweep catches
-sessions the SessionEnd hook missed, and a weekly "dream" pass consolidates
-the file.
+distilled entry (outcome, artifacts, open threads, what happened on each of
+its recent days, resume command) appended to a single markdown ledger file,
+newest first. A sweep at 02:30 and 19:30 catches sessions the SessionEnd hook
+missed, and a weekly "dream" pass consolidates the file. The evening sweep
+distills sessions that are still open, so a digest that runs at night sees
+the day's work.
 
 Excerpts pair each typed user prompt with its latest public assistant response.
 Earlier completed work remains visible when a later turn changes topic. When
 the excerpt exceeds its character cap, space is shared across turns with more
 room reserved for responses than prompts. Tool output and internal reasoning
-are excluded, and summaries treat omitted details as unknown.
+are excluded, and summaries treat omitted details as unknown. A `--- DAY
+YYYY-MM-DD ---` marker opens each local day in the excerpt, and the entry ends
+with one `- On YYYY-MM-DD:` line for each of the session's three most recent
+days, so a reader can tell what happened on a given day in a session that
+spans several.
 
 Portable across machines: all machine-specific values (including the ledger
 destination) live in `~/.claude/session-ledger.env`, which is never
@@ -31,8 +37,8 @@ Already cloned? `git pull` then rerun `./install.sh` (it is idempotent).
 The installer:
 
 1. Writes `~/.claude/session-ledger.env` if missing (commented template).
-2. Installs two launchd agents (nightly sweep 02:30, weekly dream Sunday
-   03:30) with logs going to `~/.claude/session-ledger.log`.
+2. Installs two launchd agents (sweep at 02:30 and 19:30, weekly dream
+   Sunday 03:30) with logs going to `~/.claude/session-ledger.log`.
 3. Merges a SessionEnd hook into `~/.claude/settings.json` (skipped if
    already present).
 

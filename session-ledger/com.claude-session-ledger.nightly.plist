@@ -18,13 +18,24 @@
         <string>__REPO_DIR__/session-ledger/run-alerted.sh</string>
         <string>--sweep</string>
     </array>
+    <!-- 02:30 catches the day's remaining sessions overnight. 19:30
+         distills sessions still open in the evening, so a daily digest
+         that runs at night sees today's work. -->
     <key>StartCalendarInterval</key>
-    <dict>
-        <key>Hour</key>
-        <integer>2</integer>
-        <key>Minute</key>
-        <integer>30</integer>
-    </dict>
+    <array>
+        <dict>
+            <key>Hour</key>
+            <integer>2</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+        <dict>
+            <key>Hour</key>
+            <integer>19</integer>
+            <key>Minute</key>
+            <integer>30</integer>
+        </dict>
+    </array>
     <key>RunAtLoad</key>
     <false/>
     <key>StandardOutPath</key>

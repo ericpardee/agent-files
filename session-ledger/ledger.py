@@ -48,6 +48,11 @@ SPOOL_FILE = os.path.join(CLAUDE_DIR, "session-ledger.spool.jsonl")
 LEDGER_HEADER = "# Coding agent session ledger"
 # Ledgers written before Codex support carry the old header; both are valid.
 LEGACY_LEDGER_HEADERS = ("# Claude Code session ledger",)
+# A ledger entry ends with one "On <date>" line per recent local day of its
+# session, newest first, so a daily digest can tell what happened on its day
+# in a session that spans several. Older days stay in Outcome.
+MAX_DAY_LINES = 3
+DAY_LINE_RE = re.compile(r"^[-*]?\s*on (\d{4}-\d{2}-\d{2}):\s*(.*)$", re.IGNORECASE)
 RESUME_ID_RE = re.compile(r"--resume ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
 LOCK_STALE_SECONDS = 2 * 60 * 60
 # One distill call sends a capped excerpt and returns three lines; the dream
@@ -104,18 +109,19 @@ DISTILL_INSTRUCTIONS = """\
 You are a session cataloger. Below is a distilled excerpt of one coding-agent
 session: the user's typed prompts, the latest public assistant response for
 each user turn, and metadata. Responses can include progress on unfinished turns.
+A "--- DAY YYYY-MM-DD ---" marker starts each local calendar day of the session.
 
-Return EXACTLY three markdown list lines in this format and NOTHING else. No
+Return ONLY markdown list lines in this format and NOTHING else. No
 heading, no preamble, no code fences, no Resume line, no trailing commentary:
 
 - Outcome: <max 3 lines: what actually happened, was decided, or was shipped>
 - Artifacts: <files/PRs/reports touched, or "none">
 - Open threads: <unresolved items, or "none">
-
+{day_format}
 Base everything only on the excerpt. Be terse and factual.
 Preserve completed outcomes from earlier turns when a later turn changes topic.
 An omitted or trimmed detail is unknown; it is not evidence that work is unfinished.
-
+{day_rule}
 --- SESSION EXCERPT ---
 {excerpt}
 """
@@ -138,6 +144,9 @@ markdown, no code fences, no commentary). Rules:
 5. CRITICAL: keep every distinct Resume line (`claude --resume <id>`). When
    entries merge, keep all their Resume lines inside the merged entry.
 6. Keep newest entries at the top. Do not invent information.
+7. Keep every "- On YYYY-MM-DD:" line, just above the entry's Resume lines.
+   When entries merge, keep one line per date (the newest entry's wording),
+   at most {max_days}, newest first.
 
 --- CURRENT LEDGER ---
 {ledger}
@@ -584,7 +593,7 @@ def parse_codex_session(path):
                     prompt = _codex_user_prompt(_codex_message_text(payload))
                     if prompt and not is_noise_prompt(prompt):
                         prompts.append(prompt)
-                        turns.append({"prompt": prompt, "assistant": None})
+                        turns.append({"prompt": prompt, "assistant": None, "ts": ts})
                 elif role == "assistant" and payload.get("channel") != "analysis":
                     text = _codex_message_text(payload).strip()
                     if text:
@@ -663,7 +672,7 @@ def parse_claude_session(path):
                 if text is None or not text.strip() or is_noise_prompt(text):
                     continue
                 prompts.append(text.strip())
-                turns.append({"prompt": text.strip(), "assistant": None})
+                turns.append({"prompt": text.strip(), "assistant": None, "ts": ts})
             elif rtype == "assistant":
                 msg = rec.get("message") or {}
                 content = msg.get("content")
@@ -718,6 +727,24 @@ def _clip_excerpt_text(text, budget):
     return text[:head] + marker + text[-tail:]
 
 
+def local_day(ts):
+    """The local calendar date (YYYY-MM-DD) of an ISO 8601 timestamp, or None."""
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        when = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if when.tzinfo is not None:
+        when = when.astimezone()
+    return when.date().isoformat()
+
+
+def recent_days(turns, limit=MAX_DAY_LINES):
+    """The newest local dates with a user turn, newest first."""
+    return sorted({d for d in (local_day(t.get("ts")) for t in turns) if d}, reverse=True)[:limit]
+
+
 def build_excerpt(info, max_chars):
     metadata = "cwd: %s\nstarted: %s\nlast activity: %s\n\n" % (
         info["cwd"], info["first_ts"] or "unknown", info["last_ts"] or "unknown")
@@ -730,9 +757,16 @@ def build_excerpt(info, max_chars):
                 turns.append({"prompt": "", "assistant": None})
             turns[-1]["assistant"] = info["last_assistant"]
 
+    # A day marker opens the first turn of each local day.
+    markers, last = [], None
+    for turn in turns:
+        day = local_day(turn.get("ts"))
+        markers.append("--- DAY %s ---\n" % day if day and day != last else "")
+        last = day or last
+
     def block(index, prompt, response):
-        return "USER PROMPT %d:\n%s\nASSISTANT RESPONSE %d:\n%s\n\n" % (
-            index, prompt, index, response)
+        return "%sUSER PROMPT %d:\n%s\nASSISTANT RESPONSE %d:\n%s\n\n" % (
+            markers[index - 1], index, prompt, index, response)
 
     excerpt = metadata + "".join(
         block(i, t["prompt"], t["assistant"] or "[No response captured]")
@@ -879,29 +913,44 @@ def distill_session(info, cfg):
     """
     excerpt = build_excerpt(info, cfg["MAX_EXCERPT_CHARS"])
     sid = info["session_id"]
-    prompt = DISTILL_INSTRUCTIONS.format(excerpt=excerpt)
+    days = recent_days(info.get("turns") or [])
+    day_format = day_rule = ""
+    if days:
+        day_format = "- On YYYY-MM-DD: <one line: what was done or decided in this session that day>\n"
+        day_rule = ('Write one "On" line for each of these days, newest first: %s. An "On" '
+                    "line covers only the turns under that day's DAY marker.\n" % ", ".join(days))
+    prompt = DISTILL_INSTRUCTIONS.format(excerpt=excerpt, day_format=day_format, day_rule=day_rule)
     out, err = run_claude(prompt, cfg)
     if err:
         return None, err
     out = strip_code_fence(out)
-    fields, current = {}, None
+    fields, on_days, current = {}, {}, None
     for raw in out.splitlines():
         s = raw.strip()
         low = s.lower()
         if not s or s.startswith("#") or low.startswith(("- resume:", "resume:")):
+            continue
+        day_line = DAY_LINE_RE.match(s)
+        if day_line:
+            # A date the session has no turns on is invented; drop it and its continuation.
+            current = None
+            if day_line.group(1) in days:
+                on_days[day_line.group(1)] = day_line.group(2).strip()
+                current = (on_days, day_line.group(1))
             continue
         matched = False
         for key in ("Outcome", "Artifacts", "Open threads"):
             for pre in ("- %s:" % key.lower(), "* %s:" % key.lower(), "%s:" % key.lower()):
                 if low.startswith(pre):
                     fields[key] = s[len(pre):].strip()
-                    current = key
+                    current = (fields, key)
                     matched = True
                     break
             if matched:
                 break
         if not matched and current:
-            fields[current] = (fields[current] + " " + s.lstrip("-* ").strip()).strip()
+            bucket, key = current
+            bucket[key] = (bucket[key] + " " + s.lstrip("-* ").strip()).strip()
     if not fields.get("Outcome"):
         return None, "malformed distill output (%r...)" % out[:80]
     project = os.path.basename(info["cwd"].rstrip(os.sep)) or info["cwd"]
@@ -910,6 +959,7 @@ def distill_session(info, cfg):
         "- Outcome: %s" % fields["Outcome"],
         "- Artifacts: %s" % (fields.get("Artifacts") or "none"),
         "- Open threads: %s" % (fields.get("Open threads") or "none"),
+    ] + ["- On %s: %s" % (day, on_days[day]) for day in days if on_days.get(day)] + [
         "- Resume: `%s` (in %s)" % (resume_command(info), info["cwd"]),
     ])
     return entry, None
@@ -1133,7 +1183,7 @@ def mode_dream(cfg, dry_run):
     if not content.strip():
         print("dream: ledger is empty, nothing to do")
         return
-    prompt = DREAM_INSTRUCTIONS.format(header=LEDGER_HEADER, ledger=content)
+    prompt = DREAM_INSTRUCTIONS.format(header=LEDGER_HEADER, ledger=content, max_days=MAX_DAY_LINES)
     if dry_run:
         entries = content.count("\n## ") + (1 if content.startswith("## ") else 0)
         print("dream dry-run: would consolidate %d entries in %s via %s" % (entries, ledger, cfg["MODEL"]))
