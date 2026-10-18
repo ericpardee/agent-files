@@ -340,6 +340,44 @@ def test_notify_failure_prefers_router(tmp_path, monkeypatch):
     assert (tmp_path / "alerted").exists()
 
 
+def _scheduled_sweep(tmp_path, monkeypatch, sweep, exits=False):
+    """Run main() as the scheduled sweep with the router captured; return the events it posted."""
+    cfg = {"ALERT_ROUTER_URL": "http://r:8650", "ALERT_ROUTER_TOKEN": "t", "INSTALL_LABEL": "mac-test"}
+    monkeypatch.setattr(ledger, "_ALERTED", False)
+    monkeypatch.setattr(ledger, "ALERTED_MARKER", str(tmp_path / "alerted"))
+    monkeypatch.setattr(ledger, "load_config", lambda: dict(cfg))
+    monkeypatch.setattr(ledger, "read_env_file", lambda: dict(cfg))
+    monkeypatch.setattr(ledger, "replay_spool", lambda cfg: 0)
+    monkeypatch.setattr(ledger, "acquire_lock", lambda: True)
+    monkeypatch.setattr(ledger, "release_lock", lambda: None)
+    monkeypatch.setattr(ledger, "mode_sweep", sweep)
+    monkeypatch.setattr(sys, "argv", ["ledger.py", "--sweep"])
+    events = []
+    monkeypatch.setattr(ledger, "router_post", lambda cfg, ev: events.append(ev) or True)
+    if exits:
+        with pytest.raises(SystemExit):
+            ledger.main()
+    else:
+        ledger.main()
+    return events
+
+
+def _failing_sweep(cfg, dry_run):
+    ledger.die("sweep: all 1 distill attempt(s) failed")
+
+
+def test_clean_scheduled_run_closes_an_open_failure(tmp_path, monkeypatch):
+    events = _scheduled_sweep(tmp_path, monkeypatch, lambda cfg, dry_run: None)
+    recoveries = [e for e in events if e.get("kind") != "heartbeat" and e["state"] == "ok"]
+    assert len(recoveries) == 1
+    assert recoveries[0]["source"] == "session-ledger" and recoveries[0]["check"] == "mac-test"
+
+
+def test_failed_scheduled_run_sends_no_recovery(tmp_path, monkeypatch):
+    events = _scheduled_sweep(tmp_path, monkeypatch, _failing_sweep, exits=True)
+    assert [e["state"] for e in events if e.get("kind") != "heartbeat"] == ["fail"]
+
+
 def _claude_turns(tmp_path, stamped_prompts):
     """A Claude transcript with one user prompt and one reply per timestamp."""
     records = []

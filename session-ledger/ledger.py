@@ -248,6 +248,17 @@ def send_heartbeat(cfg):
                           "kind": "heartbeat", "state": "ok", "detail": "scheduled run finished"})
 
 
+def send_recovery(cfg):
+    """Close this install's open failure, if any, after a scheduled run that ended cleanly.
+
+    The router files failures and heartbeats under separate fingerprints, so a
+    heartbeat proves the install is alive but never clears a failure.
+    """
+    if cfg.get("ALERT_ROUTER_URL"):
+        router_post(cfg, {"source": "session-ledger", "check": cfg.get("INSTALL_LABEL") or "default",
+                          "state": "ok", "detail": "scheduled run finished cleanly"})
+
+
 def notify_failure(msg):
     """Pushover alert for a failure exit, when both Pushover keys are configured.
 
@@ -1245,6 +1256,7 @@ def main():
     if not locked:
         # another instance (hook vs cron) is running; exit quietly
         sys.exit(0)
+    clean = False
     try:
         if args.sweep:
             mode_sweep(cfg, args.dry_run)
@@ -1254,11 +1266,14 @@ def main():
             mode_seed(cfg, args.days, args.dry_run)
         elif args.dream:
             mode_dream(cfg, args.dry_run)
+        clean = True  # die() and any exception skip this line
     finally:
         if not args.dry_run:
             release_lock()
         if _ALERTS_ENABLED and not args.dry_run:
             send_heartbeat(cfg)
+            if clean:
+                send_recovery(cfg)
 
 
 if __name__ == "__main__":
