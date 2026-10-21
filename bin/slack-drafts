@@ -1,0 +1,11 @@
+#!/bin/sh
+# List and delete your own Slack drafts. Builds the Go helper in ../slack-drafts
+# on first use (and again when its source changes), then runs it.
+set -e
+src="$(cd "$(dirname "$(readlink -f "$0")")/../slack-drafts" && pwd)"
+out="${XDG_CACHE_HOME:-$HOME/.cache}/agent-files/slack-drafts"
+if [ ! -x "$out" ] || [ -n "$(find "$src" -newer "$out" -name '*.go' -o -newer "$out" -name 'go.*' | head -1)" ]; then
+  mkdir -p "$(dirname "$out")"
+  (cd "$src" && go build -o "$out" .) >&2
+fi
+exec "$out" "$@"

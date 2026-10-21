@@ -5,6 +5,9 @@ always use fd instead of find
 always use git commit --no-gpg-sign when committing
 always prefer brew over npm for system tools
 
+# Slack drafts
+Slack drafts can't be edited. Before creating a draft with a Slack draft tool, delete the existing draft for that destination with `slack-drafts clear <channel_id> [thread_ts]` (add `-w <workspace>` for a workspace other than slackdump's current one), then create the new draft.
+
 # Coding
 prefer python and use uv
 

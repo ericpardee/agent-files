@@ -53,7 +53,7 @@ Only one step needs discipline: the append at the end of a session that changed 
 - `session-ledger/`: the SessionEnd hook, the nightly sweep, the weekly dream pass, the installer, and the tests. Portable: machine-specific values live in an untracked env file; launchd-managed on macOS.
 - `external-memory/`: the hub pattern with `scaffold.sh`, a lint that runs as a git hook (line caps, secret shapes, blocked vocabulary), and templates for `CLAUDE.md`, `INDEX.md`, `ACCESS.md`, `LOG.md`, and an initiative spoke.
 - `codex/AGENTS-memory-section.md`: the section of Codex's `AGENTS.md` that describes the whole chain and Codex's step in it.
-- `bin/agent-memory-dir`: prints the per-project memory directory both agents share. `bin/claude-title` copies a session's generated title for `/rename`.
+- `bin/agent-memory-dir`: prints the per-project memory directory both agents share. `bin/claude-title` copies a session's generated title for `/rename`. `bin/slack-drafts` lists and deletes your own Slack drafts, so a revised draft replaces the old one instead of piling up next to it (see `slack-drafts/README.md`).
 - `skills/`: `codex-gate` (cross-model review gate with a fix-or-rebut loop), `codex` (Codex CLI reference), `advanced-prompt-improver`, `deliverable-check`, `codex-web-render`, `freeing-disk-space`.
 - `statusline.py`: two-line status bar with an account badge that flags a wrong-account session.
 - `settings.json`: the personal Claude Code settings that wire the hook, the status line, and plugins. On the machine that owns this repo it is the live file (`~/.claude/settings.json` is a symlink to it); the pre-commit guard is what makes that safe.
