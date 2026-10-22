@@ -9,10 +9,21 @@
 //
 //	slack-drafts [-w workspace] list [channel_id]
 //	slack-drafts delete <draft_id>
-//	slack-drafts clear <channel_id> [thread_ts]   (delete every active draft for that destination)
+//	slack-drafts clear [--all] <channel_id> [thread_ts]   (delete the drafts the API created for that destination)
+//	slack-drafts restore <backup.json>
+//
+// clear skips drafts started in the Slack composer, so notes typed by hand in
+// the same channel survive; --all deletes those too.
+//
+// Before deleting, delete and clear save each draft to
+// $SLACK_DRAFTS_BACKUP_DIR (default /tmp/slack-drafts) as <name>.txt (the
+// message as markdown) and <name>.json (with the raw blocks), so edits made
+// in the Slack composer survive a rewrite. A draft that cannot be saved is
+// not deleted.
 package main
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,6 +45,7 @@ type draft struct {
 	DateCreated   int64  `json:"date_created"`
 	IsSent        bool   `json:"is_sent"`
 	IsDeleted     bool   `json:"is_deleted"`
+	FromComposer  bool   `json:"is_from_composer"`
 	Destinations  []struct {
 		ChannelID string `json:"channel_id"`
 		ThreadTS  string `json:"thread_ts"`
@@ -80,6 +92,113 @@ func text(b json.RawMessage) string {
 	return s
 }
 
+// render turns a draft's rich_text blocks back into the markdown the draft
+// tool accepts, keeping line breaks, list items, quotes and inline styles.
+func render(b json.RawMessage) string {
+	var blocks []map[string]any
+	_ = json.Unmarshal(b, &blocks)
+	inline := func(els []any) string {
+		var sb strings.Builder
+		for _, e := range els {
+			m, _ := e.(map[string]any)
+			s, _ := m["text"].(string)
+			switch m["type"] {
+			case "link":
+				u, _ := m["url"].(string)
+				if s == "" {
+					s = u
+				}
+				s = "[" + s + "](" + u + ")"
+			case "user":
+				s = "<@" + fmt.Sprint(m["user_id"]) + ">"
+			case "channel":
+				s = "<#" + fmt.Sprint(m["channel_id"]) + ">"
+			case "emoji":
+				s = ":" + fmt.Sprint(m["name"]) + ":"
+			case "broadcast":
+				s = "@" + fmt.Sprint(m["range"])
+			}
+			if st, ok := m["style"].(map[string]any); ok {
+				for _, k := range []struct{ key, mark string }{{"code", "`"}, {"strike", "~"}, {"italic", "_"}, {"bold", "**"}} {
+					if st[k.key] == true {
+						s = k.mark + s + k.mark
+					}
+				}
+			}
+			sb.WriteString(s)
+		}
+		return sb.String()
+	}
+	var out []string
+	for _, blk := range blocks {
+		els, _ := blk["elements"].([]any)
+		for _, e := range els {
+			m, _ := e.(map[string]any)
+			sub, _ := m["elements"].([]any)
+			switch m["type"] {
+			case "rich_text_section":
+				out = append(out, inline(sub))
+			case "rich_text_list":
+				indent, _ := m["indent"].(float64)
+				for i, item := range sub {
+					im, _ := item.(map[string]any)
+					ie, _ := im["elements"].([]any)
+					mark := "- "
+					if m["style"] == "ordered" {
+						mark = fmt.Sprintf("%d. ", i+1)
+					}
+					out = append(out, strings.Repeat("  ", int(indent))+mark+inline(ie)+"\n")
+				}
+			case "rich_text_quote":
+				out = append(out, "> "+strings.ReplaceAll(inline(sub), "\n", "\n> ")+"\n")
+			case "rich_text_preformatted":
+				out = append(out, "```\n"+inline(sub)+"\n```\n")
+			}
+		}
+	}
+	return strings.Join(out, "")
+}
+
+// backup writes the draft to the backup directory before it is deleted and
+// returns the path of the .txt copy.
+func backup(d draft) (string, error) {
+	dir := os.Getenv("SLACK_DRAFTS_BACKUP_DIR")
+	if dir == "" {
+		dir = "/tmp/slack-drafts"
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	ch, th := "", ""
+	if len(d.Destinations) > 0 {
+		ch, th = d.Destinations[0].ChannelID, d.Destinations[0].ThreadTS
+	}
+	name := ch
+	if th != "" {
+		name += "-" + th
+	}
+	name += "-" + d.ID + "-" + time.Now().Format("20060102-150405")
+	body := render(d.Blocks)
+	meta, _ := json.MarshalIndent(map[string]any{
+		"draft_id": d.ID, "channel_id": ch, "thread_ts": th,
+		"last_updated_ts": d.LastUpdatedTS, "saved_at": time.Now().Format(time.RFC3339),
+		"text": body, "blocks": d.Blocks,
+	}, "", "  ")
+	if err := os.WriteFile(filepath.Join(dir, name+".json"), meta, 0o600); err != nil {
+		return "", err
+	}
+	txt := filepath.Join(dir, name+".txt")
+	return txt, os.WriteFile(txt, []byte(body), 0o600)
+}
+
+func uuid() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
 func main() {
 	args := os.Args[1:]
 	ws := os.Getenv("SLACK_DRAFTS_WORKSPACE")
@@ -88,7 +207,7 @@ func main() {
 	}
 	os.Args = append([]string{os.Args[0]}, args...)
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: slack-drafts [-w workspace] list [channel_id] | delete <draft_id> | clear <channel_id> [thread_ts] | raw <draft_id>")
+		fmt.Fprintln(os.Stderr, "usage: slack-drafts [-w workspace] list [channel_id] | delete <draft_id> | clear [--all] <channel_id> [thread_ts] | restore <backup.json> | raw <draft_id>")
 		os.Exit(2)
 	}
 	cache, _ := os.UserCacheDir()
@@ -155,6 +274,11 @@ func main() {
 			}
 		}
 	case "clear":
+		all := false
+		if len(os.Args) > 2 && os.Args[2] == "--all" {
+			all = true
+			os.Args = append(os.Args[:2], os.Args[3:]...)
+		}
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "clear needs a channel_id")
 			os.Exit(2)
@@ -171,6 +295,16 @@ func main() {
 			if d.Destinations[0].ChannelID != os.Args[2] || d.Destinations[0].ThreadTS != want {
 				continue
 			}
+			if d.FromComposer && !all {
+				fmt.Println("kept", d.ID, "(started in the Slack composer; use --all)", text(d.Blocks))
+				continue
+			}
+			saved, err := backup(d)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "not deleted, backup failed:", d.ID, err)
+				os.Exit(1)
+			}
+			fmt.Println("saved", saved)
 			var r struct {
 				OK    bool   `json:"ok"`
 				Error string `json:"error"`
@@ -184,6 +318,42 @@ func main() {
 			n++
 		}
 		fmt.Println("cleared", n)
+	case "restore":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "restore needs a backup .json path")
+			os.Exit(2)
+		}
+		b, err := os.ReadFile(os.Args[2])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "read backup:", err)
+			os.Exit(1)
+		}
+		var bk struct {
+			ChannelID string          `json:"channel_id"`
+			ThreadTS  string          `json:"thread_ts"`
+			Blocks    json.RawMessage `json:"blocks"`
+		}
+		if err := json.Unmarshal(b, &bk); err != nil || bk.ChannelID == "" || len(bk.Blocks) == 0 {
+			fmt.Fprintln(os.Stderr, "not a slack-drafts backup:", err)
+			os.Exit(1)
+		}
+		dest := map[string]string{"channel_id": bk.ChannelID}
+		if bk.ThreadTS != "" {
+			dest["thread_ts"] = bk.ThreadTS
+		}
+		dj, _ := json.Marshal([]map[string]string{dest})
+		var r struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+			Draft draft  `json:"draft"`
+		}
+		v := url.Values{"blocks": {string(bk.Blocks)}, "destinations": {string(dj)}, "file_ids": {"[]"},
+			"is_from_composer": {"true"}, "client_msg_id": {uuid()}}
+		if err := call(c, token, "drafts.create", v, &r); err != nil || !r.OK {
+			fmt.Fprintln(os.Stderr, "drafts.create failed:", err, r.Error)
+			os.Exit(1)
+		}
+		fmt.Println("restored", r.Draft.ID, text(r.Draft.Blocks))
 	case "delete":
 		if len(os.Args) < 3 {
 			fmt.Fprintln(os.Stderr, "delete needs a draft_id")
@@ -193,6 +363,12 @@ func main() {
 			if d.ID != os.Args[2] {
 				continue
 			}
+			saved, err := backup(d)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "not deleted, backup failed:", d.ID, err)
+				os.Exit(1)
+			}
+			fmt.Println("saved", saved)
 			var r struct {
 				OK    bool   `json:"ok"`
 				Error string `json:"error"`
