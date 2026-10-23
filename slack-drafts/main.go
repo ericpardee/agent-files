@@ -12,8 +12,10 @@
 //	slack-drafts clear [--all] <channel_id> [thread_ts]   (delete the drafts the API created for that destination)
 //	slack-drafts restore <backup.json>
 //
-// clear skips drafts started in the Slack composer, so notes typed by hand in
-// the same channel survive; --all deletes those too.
+// clear deletes only drafts the API created that no Slack client has touched
+// since (empty last_updated_client). Drafts typed or edited in Slack are kept
+// and listed, so hand-written notes and hand edits survive; --all deletes them
+// too, and delete <draft_id> removes one after saving it.
 //
 // Before deleting, delete and clear save each draft to
 // $SLACK_DRAFTS_BACKUP_DIR (default /tmp/slack-drafts) as <name>.txt (the
@@ -46,6 +48,7 @@ type draft struct {
 	IsSent        bool   `json:"is_sent"`
 	IsDeleted     bool   `json:"is_deleted"`
 	FromComposer  bool   `json:"is_from_composer"`
+	UpdatedClient string `json:"last_updated_client"`
 	Destinations  []struct {
 		ChannelID string `json:"channel_id"`
 		ThreadTS  string `json:"thread_ts"`
@@ -295,8 +298,8 @@ func main() {
 			if d.Destinations[0].ChannelID != os.Args[2] || d.Destinations[0].ThreadTS != want {
 				continue
 			}
-			if d.FromComposer && !all {
-				fmt.Println("kept", d.ID, "(started in the Slack composer; use --all)", text(d.Blocks))
+			if (d.FromComposer || d.UpdatedClient != "") && !all {
+				fmt.Println("kept", d.ID, "(typed or edited in Slack; delete <draft_id> or --all)", text(d.Blocks))
 				continue
 			}
 			saved, err := backup(d)
