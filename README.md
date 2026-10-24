@@ -15,7 +15,7 @@ Claude Code and Codex CLI are used interchangeably here, on more than one machin
 
 Layers 1, 2 and 4 are per machine. Layer 3 is a git repository of its own, one per identity (personal work and employer work never share a hub), so it travels between machines and the assistant can clone it read-only.
 
-Layer 2 is optional. An install that loads the hub with a SessionStart hook and gates hub writes on your approval (a PreToolUse hook that asks before any write into the hub and a Stop hook that refuses to end a turn while the hub holds uncommitted changes, all kept in the hub's own `claude/hooks/` directory) can turn per-project memory off and keep one curated memory.
+Layer 2 is optional. An install that loads the hub with a SessionStart hook and routes every memory change through an approval queue can turn per-project memory off and keep one curated memory: agents queue changes as they learn them, you approve the batch once at `/end` or in a dialog when the session exits, a PreToolUse hook refuses direct writes to the hub's memory files, and the hooks live in the hub's own `claude/hooks/` directory.
 
 ## How a fact travels
 

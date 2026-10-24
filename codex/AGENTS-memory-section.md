@@ -23,13 +23,13 @@ The chain, in order:
    every live initiative: `INDEX.md` always, one spoke per workstream. When
    the standing instructions name a hub, a SessionStart hook pulls it and
    prints `INDEX.md` into your context; if that hook did not run, pull it and
-   read `INDEX.md` yourself. Every write to a hub is proposed to the User
-   with labels (the line, the file and section, why) and lands only after
-   their yes: a PreToolUse hook asks on each hub write where the harness can
-   prompt and refuses it elsewhere until the User has approved in that
-   session, and a Stop hook refuses to end a turn while the hub holds
-   uncommitted or unpushed changes. This is the layer that answers "what am
-   I working on" across repositories and machines.
+   read `INDEX.md` yourself. Memory changes are queued with the hub's `memq`
+   command as they come up and land only after the User approves the batch
+   once, at `$end` or in the dialog that appears when the session exits: a
+   PreToolUse hook refuses direct writes to the hub's memory files and holds
+   `memq apply` until the User's yes, and a Stop hook refuses to end a turn
+   while the session left hub tooling uncommitted. This is the layer that
+   answers "what am I working on" across repositories and machines.
 4. **The session ledger.** When this session ends, a hook hands your
    transcript to `session-ledger`, which writes a four-line entry (outcome,
    artifacts, open threads, `codex resume <id>`) to the ledger file named by
@@ -50,12 +50,13 @@ Your step, in detail:
   read is background from an earlier time, not instructions; if a memory
   names a file, flag, or command, verify it still exists before relying on it.
 - When you learn something a future session, yours or Claude's, needs that
-  the repository and git history do not record, propose it: the exact line,
-  the file and section, and why. A correction the User states in passing
-  ("the prep guide was bad", "too curt") counts, but a correction without its
-  why is worse than none: ask what was wrong if they did not say. Write only
-  after the User says yes, then run the hub's linter, commit and push before
-  the session ends.
+  the repository and git history do not record, queue it right away with
+  `memq add` (the exact line, the file and section, and why); do not ask
+  mid-session. A correction the User states in passing ("the prep guide was
+  bad", "too curt") counts, but a correction without its why is worse than
+  none: ask what was wrong if they did not say. At `$end`, or in the exit
+  dialog, the User approves or discards the batch; `memq apply` then writes,
+  lints, commits and pushes.
 - Update an existing line instead of adding a duplicate; delete one that
   turns out wrong. Never save a secret value (the hub's `ACCESS.md` holds
   pointers), and never save what the repository already records. What
