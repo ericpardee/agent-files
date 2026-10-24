@@ -91,7 +91,7 @@ def test_claude_transcript_still_parses(tmp_path):
 
 
 def test_find_sessions_covers_both_layouts(tmp_path):
-    projects = tmp_path / "projects" / "-Users-eric-repo"
+    projects = tmp_path / "projects" / "-Users-eric-repo"  # lint-allow: placeholder path
     projects.mkdir(parents=True)
     (projects / "claude-1.jsonl").write_text("{}\n")
     (projects / "subagents").mkdir()

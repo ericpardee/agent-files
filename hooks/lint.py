@@ -6,7 +6,8 @@ Blocked: token shapes (AWS, GitHub, Slack, Anthropic, OpenAI, Google, private
 keys, inline credential assignments), absolute home directories (/Users/<name>,
 /home/<name>), and the words listed in hooks/blocked-words.txt (one regex per
 line, case-insensitive; blocked-words.local.txt is the untracked, machine-local
-list). Append "lint-allow" to a line to exempt it.
+list of private identifiers: employers, products, people, hosts). LICENSE is
+exempt from the word list. Append "lint-allow" to a line to exempt it.
 """
 import os
 import re
@@ -71,7 +72,7 @@ def main():
             files = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split("\0")
             files = [f for f in files if f]
         for rel in files:
-            if rel == "hooks/lint.py" or rel == "hooks/blocked-words.txt":
+            if rel in ("hooks/lint.py", "hooks/blocked-words.txt", "LICENSE"):
                 continue
             blob = subprocess.run(["git", "show", ":" + rel], cwd=ROOT, capture_output=True).stdout if "--all" not in sys.argv else open(os.path.join(ROOT, rel), "rb").read()
             if b"\0" in blob[:4096]:
