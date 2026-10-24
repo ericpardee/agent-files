@@ -74,8 +74,11 @@ next to Claude transcripts; entries for them end in `codex resume <id>`.
 Only interactive sessions count: `codex exec` runs and spawned subagent
 threads are skipped, and Codex's injected context blocks are not prompts.
 
-The installer appends a `SessionEnd` command hook to `config.toml` (set
-`CODEX_HOME` first for a secondary install). Codex passes the same stdin
+The installer adds a `SessionEnd` command hook to Codex's `hooks.json`, or to
+`config.toml` when that file already holds the hook definitions and there is no
+`hooks.json` (Codex warns when one layer uses both), and only once (set
+`CODEX_HOME` first for a secondary install). Set `SESSION_LEDGER_SKIP=1` to keep
+a throwaway session, such as a test run, out of the ledger. Codex passes the same stdin
 JSON as Claude Code (`session_id`, `cwd`, `transcript_path`), so the one
 hook script serves both. SessionEnd hooks are capped at three seconds; the
 hook only spawns the distill and returns. Codex runs a user-defined hook

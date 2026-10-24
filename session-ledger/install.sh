@@ -122,16 +122,21 @@ else:
     print("added SessionEnd hook to settings.json")
 PYEOF
 
-# (c2) Codex CLI: a SessionEnd command hook in config.toml. Codex passes the
-# same stdin JSON (session_id, cwd, transcript_path) as Claude Code, so the
-# one hook script serves both. SessionEnd hooks are capped at three seconds,
-# which the detached hook script fits with room to spare.
+# (c2) Codex CLI: a SessionEnd command hook. Codex passes the same stdin JSON
+# (session_id, cwd, transcript_path) as Claude Code, so the one hook script
+# serves both. SessionEnd hooks are capped at three seconds, which the
+# detached hook script fits with room to spare. Codex reads hooks from
+# hooks.json and from [[hooks.*]] tables in config.toml and warns when one
+# layer uses both, so the hook goes into hooks.json unless config.toml already
+# holds the hook definitions and hooks.json does not exist. Either way it is
+# added only once.
 CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
 CODEX_CONFIG="$CODEX_DIR/config.toml"
+CODEX_HOOKS="$CODEX_DIR/hooks.json"
 if [ -f "$CODEX_CONFIG" ]; then
-  if grep -q "session-ledger" "$CODEX_CONFIG"; then
-    echo "Codex SessionEnd hook already present in $CODEX_CONFIG"
-  else
+  if grep -q "session-ledger" "$CODEX_CONFIG" 2>/dev/null || grep -q "session-ledger" "$CODEX_HOOKS" 2>/dev/null; then
+    echo "Codex SessionEnd hook already present"
+  elif [ ! -f "$CODEX_HOOKS" ] && grep -q '^\[\[hooks\.' "$CODEX_CONFIG"; then
     cat >>"$CODEX_CONFIG" <<TOMLEOF
 
 # session-ledger: distill each session into the ledger when it ends.
@@ -144,6 +149,24 @@ command = "bash $SCRIPT_DIR/sessionend-hook.sh"
 timeout = 3
 TOMLEOF
     echo "added Codex SessionEnd hook to $CODEX_CONFIG"
+  else
+    python3 - "$CODEX_HOOKS" "bash $SCRIPT_DIR/sessionend-hook.sh" <<'PYEOF2'
+import json, os, sys
+path, command = sys.argv[1], sys.argv[2]
+data = {}
+if os.path.exists(path):
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    data = json.loads(text) if text.strip() else {}
+data.setdefault("hooks", {}).setdefault("SessionEnd", []).append(
+    {"matcher": "other", "hooks": [{"type": "command", "command": command, "timeout": 3}]})
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2)
+    fh.write("\n")
+os.replace(tmp, path)
+print("added Codex SessionEnd hook to %s" % path)
+PYEOF2
   fi
   # Codex runs a user-defined hook only once its current hash is recorded as
   # trusted in hooks.state. Ask the app-server for the hook's key and hash and
@@ -185,7 +208,8 @@ finally:
         pass
     p.terminate()
 hooks = [h for d in (resp or {}).get("result", {}).get("data", []) for h in d.get("hooks", [])
-         if "session-ledger" in (h.get("command") or "") and h.get("sourcePath") == config]
+         if "session-ledger" in (h.get("command") or "")
+         and h.get("sourcePath") in (config, os.path.join(os.path.dirname(config), "hooks.json"))]
 if not hooks:
     sys.exit("codex app-server did not list the session-ledger hook; trust it from the Codex UI")
 h = hooks[0]

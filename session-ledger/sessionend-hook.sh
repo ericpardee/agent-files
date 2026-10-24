@@ -3,6 +3,9 @@
 # Receives Claude Code hook JSON on stdin (session_id, transcript_path, cwd).
 # Must never block or fail session exit: always exits 0, work runs detached.
 
+# SESSION_LEDGER_SKIP=1 keeps throwaway sessions (tests, probes) out of the ledger.
+[ -n "${SESSION_LEDGER_SKIP:-}" ] && exit 0
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 LOG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/session-ledger.log"
 
