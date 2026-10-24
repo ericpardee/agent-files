@@ -20,6 +20,10 @@ Layers 1 to 3 are automatic or per-repository. Layer 4 is the one that
 answers "what am I working on, and where did we leave it" across every
 repository and machine, and it is the one people usually do not have.
 
+Layer 2 is optional once the hub is loaded by a SessionStart hook and its
+writes are gated on your approval; those hooks live in the hub's own
+`claude/hooks/` directory, next to the rules files both agents share.
+
 ## Shape of a hub
 
 ```text

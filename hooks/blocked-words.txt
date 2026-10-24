@@ -1,8 +1,8 @@
 # One regular expression per line, case-insensitive. Any match blocks the commit.
 # This repository is public. Private identifiers (employers, products, people, hosts) live in the
 # untracked hooks/blocked-words.local.txt on each machine; this file holds only generic shapes.
-# Email addresses other than noreply and example senders
-[\w.+-]+@(?!anthropic\.com\b|example\.com\b|github\.com\b|users\.noreply\.github\.com\b|noreply\.github\.com\b)[\w-]+(?:\.[\w-]+)+
+# Email addresses other than noreply and example senders and the exact Codex commit-trailer address
+(?<![\w.+-])(?!codex@openai\.com\b)[\w.+-]+@(?!anthropic\.com\b|example\.com\b|github\.com\b|users\.noreply\.github\.com\b|noreply\.github\.com\b)[\w-]+(?:\.[\w-]+)+
 # Private (RFC 1918) and tailnet (CGNAT) IPv4 addresses, Tailscale hostnames
 \b(?:10|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}(?:\.\d{1,3}){1,2}\b
 \b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b
