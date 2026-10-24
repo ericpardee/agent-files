@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Create a Gmail draft that reads like one typed in Gmail.
+
+Paragraphs are never hard-wrapped: the body file holds one paragraph per line,
+blank lines between paragraphs. The draft carries a text/plain part (long lines,
+quoted-printable) and a text/html part with one <div> per line, the way Gmail's
+own compose stores mail, so the recipient never sees ragged line breaks.
+Runs of "- " (or "1. ") lines become real Gmail bullet (or numbered) lists, and
+**text** becomes bold, so a "**Still open**" line is a bold heading.
+
+--update refuses to run if the draft was edited in Gmail since this tool last
+wrote it, so hand edits are never overwritten; merge into the current text, or
+pass --force.
+
+Usage:
+  gmail-draft --body FILE --to ADDR [--cc ADDR] [--subject S] [--reply-to MESSAGE_ID] [--update DRAFT_ID]
+
+--reply-to threads the draft under that message (In-Reply-To, References,
+threadId, "Re:" subject). --update DRAFT_ID replaces that draft in place, so its
+id and an open Gmail window stay valid; without --reply-to it keeps the
+draft's thread, reply headers and subject. Uses the gws CLI with whatever
+GOOGLE_WORKSPACE_CLI_CONFIG_DIR is set (point it at another account's gws config dir).
+"""
+import argparse
+import base64
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from email.message import EmailMessage
+from email.policy import SMTP
+
+
+def gws(*args, cwd=None):
+    out = subprocess.run(["gws", *args], capture_output=True, text=True, cwd=cwd)
+    s = out.stdout
+    if "{" not in s:
+        sys.exit(f"gws failed: {out.stderr.strip()[-400:]}")
+    data = json.loads(s[s.find("{"):])
+    if "error" in data:
+        sys.exit(f"gws error: {json.dumps(data['error'])[:400]}")
+    return data
+
+
+def unwrap(text):
+    """Join hard-wrapped lines inside a paragraph; keep list items and blank lines."""
+    out, buf = [], []
+    item = re.compile(r"^\s*([-*•]|\d+[.)])\s+")
+    for line in text.rstrip("\n").split("\n"):
+        if not line.strip():
+            if buf:
+                out.append(" ".join(buf))
+                buf = []
+            out.append("")
+        elif item.match(line) or not buf:
+            if buf:
+                out.append(" ".join(buf))
+            buf = [line.rstrip()]
+        else:
+            buf.append(line.strip())
+    if buf:
+        out.append(" ".join(buf))
+    return out
+
+
+BULLET = re.compile(r"^\s*[-*•]\s+")
+NUMBER = re.compile(r"^\s*\d+[.)]\s+")
+
+
+def inline(text):
+    url = re.compile(r"(https?://[^\s<>\"]+[^\s<>\".,;:!?)])")
+    esc = url.sub(r'<a href="\1">\1</a>', html.escape(text))
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", esc)
+
+
+def to_html(lines):
+    """One <div> per paragraph; runs of "- " or "1. " lines become real Gmail lists;
+    **text** becomes bold, so a "**Fixed**" line renders as a bold heading."""
+    out, i = [], 0
+    while i < len(lines):
+        line = lines[i]
+        kind = "ul" if BULLET.match(line) else "ol" if NUMBER.match(line) else None
+        if kind:
+            pat = BULLET if kind == "ul" else NUMBER
+            items = []
+            while i < len(lines) and pat.match(lines[i]):
+                items.append("<li>" + inline(pat.sub("", lines[i], count=1)) + "</li>")
+                i += 1
+            out.append(f"<{kind}>" + "".join(items) + f"</{kind}>")
+            continue
+        out.append("<div><br></div>" if not line.strip() else "<div>" + inline(line) + "</div>")
+        i += 1
+    return '<div dir="ltr">' + "".join(out) + "</div>"
+
+
+def plain(lines):
+    return "\n".join(re.sub(r"\*\*(.+?)\*\*", r"\1", l) for l in lines) + "\n"
+
+
+CACHE = os.path.expanduser("~/.cache/gmail-draft")
+
+
+def draft_text(draft_id):
+    """The text/plain body of a draft as it stands in Gmail now."""
+    d = gws("gmail", "users", "drafts", "get", "--params", json.dumps({
+        "userId": "me", "id": draft_id, "format": "full"}))
+    def walk(p):
+        if p.get("mimeType") == "text/plain" and p.get("body", {}).get("data"):
+            return base64.urlsafe_b64decode(p["body"]["data"] + "==").decode("utf-8", "replace")
+        for c in p.get("parts", []) or []:
+            t = walk(c)
+            if t is not None:
+                return t
+        return None
+    return walk(d["message"]["payload"]) or ""
+
+
+def norm(t):
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--body", required=True)
+    ap.add_argument("--to", required=True)
+    ap.add_argument("--cc")
+    ap.add_argument("--subject")
+    ap.add_argument("--reply-to", dest="reply_to")
+    ap.add_argument("--update", help="draft id to replace in place (keeps the id)")
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite a draft even if it was edited in Gmail since this tool wrote it")
+    a = ap.parse_args()
+
+    if a.update and not a.force:
+        # Refuse to clobber edits made in Gmail: the draft must still match what we last wrote.
+        cached = os.path.join(CACHE, a.update + ".txt")
+        now = draft_text(a.update)
+        if not os.path.exists(cached) or norm(open(cached, encoding="utf-8").read()) != norm(now):
+            sys.exit("refusing to update: the draft was edited in Gmail since gmail-draft last wrote it "
+                     "(or was never written by it). Read the current draft and merge your change into it, "
+                     "or pass --force to overwrite.")
+
+    lines = unwrap(open(a.body, encoding="utf-8").read())
+    msg = EmailMessage(policy=SMTP)
+    msg["To"] = a.to
+    if a.cc:
+        msg["Cc"] = a.cc
+    thread_id = None
+    subject = a.subject
+    if a.reply_to:
+        src = gws("gmail", "users", "messages", "get", "--params", json.dumps({
+            "userId": "me", "id": a.reply_to, "format": "metadata",
+            "metadataHeaders": ["Message-ID", "References", "Subject"]}))
+        h = {x["name"].lower(): x["value"] for x in src["payload"]["headers"]}
+        thread_id = src["threadId"]
+        mid = h.get("message-id")
+        if mid:
+            msg["In-Reply-To"] = mid
+            msg["References"] = (h.get("references", "") + " " + mid).strip()
+        if not subject:
+            s = h.get("subject", "")
+            subject = s if s.lower().startswith("re:") else "Re: " + s
+    elif a.update:
+        # Keep the existing draft's thread and reply headers.
+        old = gws("gmail", "users", "drafts", "get", "--params", json.dumps({
+            "userId": "me", "id": a.update, "format": "metadata"}))["message"]
+        h = {x["name"].lower(): x["value"] for x in old["payload"]["headers"]}
+        thread_id = old.get("threadId")
+        for k, name in (("in-reply-to", "In-Reply-To"), ("references", "References")):
+            if h.get(k):
+                msg[name] = h[k]
+        subject = subject or h.get("subject", "")
+    msg["Subject"] = subject or ""
+    msg.set_content(plain(lines))
+    msg.add_alternative(to_html(lines), subtype="html")
+
+    # gws only uploads files under its working directory, so run it inside a temp dir.
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(f"{tmp}/draft.eml", "wb") as f:
+            f.write(msg.as_bytes())
+        body = {"message": {"threadId": thread_id}} if thread_id else {"message": {}}
+        if a.update:
+            body["id"] = a.update
+            res = gws("gmail", "users", "drafts", "update", "--params",
+                      json.dumps({"userId": "me", "id": a.update}),
+                      "--json", json.dumps(body), "--upload", "draft.eml",
+                      "--upload-content-type", "message/rfc822", cwd=tmp)
+        else:
+            res = gws("gmail", "users", "drafts", "create", "--params", '{"userId":"me"}',
+                      "--json", json.dumps(body), "--upload", "draft.eml",
+                      "--upload-content-type", "message/rfc822", cwd=tmp)
+    if not res.get("id"):
+        sys.exit(f"no draft id returned: {json.dumps(res)[:400]}")
+    os.makedirs(CACHE, exist_ok=True)
+    with open(os.path.join(CACHE, res["id"] + ".txt"), "w", encoding="utf-8") as f:
+        f.write(draft_text(res["id"]))
+    print(json.dumps({"draft_id": res["id"], "message_id": res.get("message", {}).get("id"),
+                      "thread_id": res.get("message", {}).get("threadId")}))
+
+
+if __name__ == "__main__":
+    main()
