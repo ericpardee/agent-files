@@ -23,9 +23,11 @@ The chain, in order:
    every live initiative: `INDEX.md` always, one spoke per workstream. When
    the standing instructions name a hub, a SessionStart hook pulls it and
    prints `INDEX.md` into your context; if that hook did not run, pull it and
-   read `INDEX.md` yourself. Memory changes are queued with the hub's `memq`
-   command as they come up and land only after the User approves the batch
-   once, at `$memq` or in the dialog that appears when the session exits: a
+   read `INDEX.md` yourself. Memory changes go through the hub's `memq`
+   command as they come up: what the User said or a tool verified is saved at
+   once (`memq add --sure`, undone with `memq undo`), and the rest lands only
+   after the User approves the batch once, at `$memq` or in the dialog that
+   appears when the session exits: a
    PreToolUse hook refuses direct writes to the hub's memory files and holds
    `memq apply` until the User's yes, and a Stop hook refuses to end a turn
    while the session left hub tooling uncommitted. This is the layer that
@@ -57,6 +59,12 @@ Your step, in detail:
   none: ask what was wrong if they did not say. At `$memq`, or in the exit
   dialog, the User approves or discards the batch; `memq apply` then writes,
   lints, commits and pushes.
+- Add `--sure` when the User said it in this session or a command or live
+  source verified it: the change is saved at once, and your reply carries one
+  line, "Saved to memory: <summary> (undo M<n>)". Leave it off for anything
+  you inferred, generalized or are unsure of, anything that contradicts the
+  hub without the User's confirmation, and removing a line nobody asked to
+  remove.
 - Update an existing line instead of adding a duplicate; delete one that
   turns out wrong. Never save a secret value (the hub's `ACCESS.md` holds
   pointers), and never save what the repository already records. What
