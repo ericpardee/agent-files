@@ -50,7 +50,4 @@ Show the source you verified against before proposing a fix.
 
 # External memory hub
 
-Personal work has a private hub repository at `~/Development/github.com/ericpardee/personal-memory`, built from the `external-memory/` pattern in the agent-files repo. It holds the current state of every live personal initiative; the work sandbox has its own hub and the two never mix.
-
-- Session start: `git -C ~/Development/github.com/ericpardee/personal-memory pull --rebase --quiet`, read its `INDEX.md`, and load the `initiatives/` spoke for the initiative in play.
-- Session end, if that initiative's state changed: append a dated line to the spoke's State log, move its Active initiatives row if status changed, run `python3 scripts/lint.py`, commit, push, per that repo's `CLAUDE.md`.
+A private hub repository per identity, built from the `external-memory/` pattern in this repo, holds the current state of every live initiative. The rules files the hub ships name its path and ritual: a SessionStart hook pulls it and loads `INDEX.md`, durable facts are queued with `memq` as they come up, and the user approves the batch once at `/memq` or when the session exits. The work identity has its own hub and the two never mix.

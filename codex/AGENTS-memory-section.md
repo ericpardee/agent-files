@@ -25,7 +25,7 @@ The chain, in order:
    prints `INDEX.md` into your context; if that hook did not run, pull it and
    read `INDEX.md` yourself. Memory changes are queued with the hub's `memq`
    command as they come up and land only after the User approves the batch
-   once, at `$end` or in the dialog that appears when the session exits: a
+   once, at `$memq` or in the dialog that appears when the session exits: a
    PreToolUse hook refuses direct writes to the hub's memory files and holds
    `memq apply` until the User's yes, and a Stop hook refuses to end a turn
    while the session left hub tooling uncommitted. This is the layer that
@@ -54,7 +54,7 @@ Your step, in detail:
   `memq add` (the exact line, the file and section, and why); do not ask
   mid-session. A correction the User states in passing ("the prep guide was
   bad", "too curt") counts, but a correction without its why is worse than
-  none: ask what was wrong if they did not say. At `$end`, or in the exit
+  none: ask what was wrong if they did not say. At `$memq`, or in the exit
   dialog, the User approves or discards the batch; `memq apply` then writes,
   lints, commits and pushes.
 - Update an existing line instead of adding a duplicate; delete one that
