@@ -50,4 +50,4 @@ Show the source you verified against before proposing a fix.
 
 # External memory hub
 
-A private hub repository per identity, built from the `external-memory/` pattern in this repo, holds the current state of every live initiative. The rules files the hub ships name its path and ritual: a SessionStart hook pulls it and loads `INDEX.md`, durable facts are queued with `memq` as they come up, and the user approves the batch once at `/memq` or when the session exits. The work identity has its own hub and the two never mix.
+A private hub repository per identity, built from the `external-memory/` pattern in this repo, holds the current state of every live initiative. The rules files the hub ships name its path and ritual: a SessionStart hook pulls it and loads `INDEX.md`, durable facts are written with `memq` as they come up: what the user said or a tool verified is saved at once (`memq add --sure`, undone with `memq undo`), and anything inferred waits for the user's approval at `/memq` or when the session exits. The work identity has its own hub and the two never mix.
