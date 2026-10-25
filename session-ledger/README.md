@@ -16,7 +16,9 @@ are excluded, and summaries treat omitted details as unknown. A `--- DAY
 YYYY-MM-DD ---` marker opens each local day in the excerpt, and the entry ends
 with one `- On YYYY-MM-DD:` line for each of the session's three most recent
 days, so a reader can tell what happened on a given day in a session that
-spans several.
+spans several. A Claude Code session started headless (`claude -p`, by a
+script or an agent) gets a `- Started: headless` line, so a reader never
+takes a dispatched agent's work for the user's own.
 
 Portable across machines: all machine-specific values (including the ledger
 destination) live in `~/.claude/session-ledger.env`, which is never
@@ -103,7 +105,7 @@ variables with the same names override the file.
 | `MODEL` | `claude-sonnet-5` | Model for distill and dream calls |
 | `PROJECTS_DIR` | `~/.claude/projects` | Claude Code transcript location |
 | `MIN_NEW_PROMPTS` | `1` | New user prompts needed before redistilling |
-| `MAX_EXCERPT_CHARS` | `10000` | Cap on excerpt sent to the model |
+| `MAX_EXCERPT_CHARS` | `40000` | Cap on excerpt sent to the model; each turn gets an equal share |
 | `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY` | unset | When both are set, a failed sweep or dream sends a Pushover alert titled `session-ledger failed` naming the install. `run-alerted.sh`, the launchd entry point, also alerts when `ledger.py` could not run or crashed before reporting (python missing, Xcode license, traceback). Per-session hook failures never alert; the nightly sweep retries them |
 | `ALERT_ROUTER_URL`, `ALERT_ROUTER_TOKEN` | unset | URL of an alert router that accepts `POST /event` JSON with a bearer token. When set, a failed sweep or dream, a per-run heartbeat, and an `ok` event after each clean scheduled run (which closes that install's open failure) go there and Pushover is not used; events the router cannot take wait in `session-ledger.spool.jsonl` and are resent on the next scheduled run |
 | `INSTALL_LABEL` | `default` | Name of this install in the alert router's events (one per machine or config dir) |

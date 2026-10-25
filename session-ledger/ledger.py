@@ -65,7 +65,9 @@ DEFAULTS = {
     "MODEL": "claude-sonnet-5",
     "PROJECTS_DIR": os.path.join(CLAUDE_DIR, "projects"),
     "MIN_NEW_PROMPTS": "1",
-    "MAX_EXCERPT_CHARS": "10000",
+    # Each turn gets an equal share, so a long session needs room: at 10000 a
+    # session of a dozen turns kept too little of each to say what it did.
+    "MAX_EXCERPT_CHARS": "40000",
     # Codex CLI sessions (rollout-*.jsonl). Default: $CODEX_HOME/sessions when
     # CODEX_HOME is set, else ~/.codex/sessions. Set to "none" to ignore Codex.
     "CODEX_SESSIONS_DIR": "",
@@ -147,6 +149,8 @@ markdown, no code fences, no commentary). Rules:
 7. Keep every "- On YYYY-MM-DD:" line, just above the entry's Resume lines.
    When entries merge, keep one line per date (the newest entry's wording),
    at most {max_days}, newest first.
+8. Keep every "- Started: headless ..." line with its entry; it says a script
+   or an agent ran the session and nobody typed in it.
 
 --- CURRENT LEDGER ---
 {ledger}
@@ -647,6 +651,7 @@ def parse_claude_session(path):
     first_ts = None
     last_ts = None
     session_id = None
+    headless = False
     with open(path, encoding="utf-8", errors="replace") as fh:
         for raw in fh:
             raw = raw.strip()
@@ -669,6 +674,9 @@ def parse_claude_session(path):
                     last_ts = ts
             if rec.get("cwd") and not cwd:
                 cwd = rec["cwd"]
+            # claude -p, run by a script or an agent, records an SDK entrypoint.
+            if str(rec.get("entrypoint") or "").startswith("sdk"):
+                headless = True
             if rtype == "ai-title":
                 ai_title = rec.get("aiTitle") or ai_title
             elif rtype == "custom-title":
@@ -720,6 +728,7 @@ def parse_claude_session(path):
         "first_ts": first_ts,
         "last_ts": last_ts,
         "excluded": None,
+        "headless": headless,
     }
 
 
@@ -970,7 +979,8 @@ def distill_session(info, cfg):
         "- Outcome: %s" % fields["Outcome"],
         "- Artifacts: %s" % (fields.get("Artifacts") or "none"),
         "- Open threads: %s" % (fields.get("Open threads") or "none"),
-    ] + ["- On %s: %s" % (day, on_days[day]) for day in days if on_days.get(day)] + [
+    ] + (["- Started: headless (a script or an agent ran it; nobody typed in it)"] if info.get("headless") else [])
+      + ["- On %s: %s" % (day, on_days[day]) for day in days if on_days.get(day)] + [
         "- Resume: `%s` (in %s)" % (resume_command(info), info["cwd"]),
     ])
     return entry, None

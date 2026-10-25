@@ -455,3 +455,33 @@ def test_the_sweep_also_runs_in_the_evening():
                            "com.claude-session-ledger.nightly.plist"), "rb") as fh:
         times = plistlib.load(fh)["StartCalendarInterval"]
     assert {(t["Hour"], t["Minute"]) for t in times} == {(2, 30), (19, 30)}
+
+
+def test_a_headless_session_says_nobody_typed_in_it(tmp_path, monkeypatch):
+    # A dispatched subagent or a scripted probe (claude -p) records entrypoint "sdk-cli"; its first
+    # prompt becomes the title, and a reader took "You are the spec coach..." for the user's own work.
+    path = tmp_path / "agent.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in [
+        {"type": "user", "entrypoint": "sdk-cli", "sessionId": "feedbeef-0000-0000-0000-000000000000",
+         "cwd": "/tmp/project", "timestamp": "2026-10-24T18:00:00.000Z",
+         "message": {"role": "user", "content": "You are the spec coach for the epic."}},
+        {"type": "assistant", "entrypoint": "sdk-cli", "timestamp": "2026-10-24T18:05:00.000Z",
+         "message": {"role": "assistant", "content": [{"type": "text", "text": "Spec written."}]}}]) + "\n")
+    info = ledger.parse_session(str(path))
+    assert info["headless"] is True
+    monkeypatch.setattr(ledger, "run_claude", lambda prompt, cfg: ("- Outcome: Spec written.", None))
+    entry, err = ledger.distill_session(info, {"MAX_EXCERPT_CHARS": 10000})
+    assert err is None
+    assert "- Started: headless (a script or an agent ran it; nobody typed in it)" in entry.splitlines()
+
+
+def test_a_typed_session_has_no_started_line(tmp_path, monkeypatch):
+    info = _claude_turns(tmp_path, [("2026-10-24T18:00:00.000Z", "fix the alerting")])
+    assert info["headless"] is False
+    monkeypatch.setattr(ledger, "run_claude", lambda prompt, cfg: ("- Outcome: Fixed.", None))
+    entry, _ = ledger.distill_session(info, {"MAX_EXCERPT_CHARS": 10000})
+    assert "- Started:" not in entry
+
+
+def test_the_default_excerpt_holds_a_long_session():
+    assert int(ledger.DEFAULTS["MAX_EXCERPT_CHARS"]) >= 40000
