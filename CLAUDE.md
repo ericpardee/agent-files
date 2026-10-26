@@ -6,7 +6,11 @@ always use git commit --no-gpg-sign when committing
 always prefer brew over npm for system tools
 
 # Slack drafts
-Slack drafts can't be edited. Before creating a draft with a Slack draft tool, delete the existing draft for that destination with `slack-drafts clear <channel_id> [thread_ts]` (add `-w <workspace>` for a workspace other than slackdump's current one), then create the new draft.
+Slack drafts can't be edited, and a draft tool's "Draft created" reply is not proof the draft exists. Add `-w <workspace>` to any `slack-drafts` command for a workspace other than slackdump's current one.
+- Create drafts with the Slack connector's draft tool, never `slack-drafts restore`: Slack keeps restored drafts on its server, but the app does not show them.
+- Before writing, run `slack-drafts list <channel_id>`. If the destination already holds a draft, delete it with `slack-drafts clear <channel_id> [thread_ts]`, because the connector's draft tool silently writes nothing to a destination that already has one (its reply then carries no `draft_id`). If `clear` prints "kept", the User typed or edited that draft in Slack: build the new draft on its text, then remove it with `slack-drafts clear --all <channel_id> [thread_ts]` (it saves a backup first).
+- After writing, run `slack-drafts list <channel_id>` again, and report the draft only when one starting with the new text is there.
+- Never make a link bold: Slack's composer carries the bold into the text that follows it.
 
 # Coding
 prefer python and use uv
