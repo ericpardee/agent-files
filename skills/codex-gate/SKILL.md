@@ -80,8 +80,14 @@ git diff --stat "origin/$BASE...HEAD"   # must be non-empty
 
 ## Step 2: Run Codex at max reasoning
 
-Do not pass `-m`; `~/.codex/config.toml` already defaults to the latest Codex model.
+Pass `-m` with the first model OpenAI lists in `~/.codex/models_cache.json` (the lowest
+`priority` with `visibility` "list"; Codex refreshes that file itself), so the gate follows
+OpenAI's order with no edit here. If the login refuses that model, use the next one.
 Force max reasoning explicitly and append `2>/dev/null` to suppress thinking tokens.
+
+```bash
+MODEL=$(jq -r '[.models[] | select(.visibility == "list")] | sort_by(.priority) | .[0].slug' ~/.codex/models_cache.json)
+```
 
 Two invocation rules that will otherwise cost you a wasted run:
 
@@ -125,7 +131,7 @@ and `--commit` flags.
   git diff --name-only "$(git merge-base origin/BASE HEAD)" | sed 's/^/  /'
 } > prompt.txt
 
-codex exec --sandbox read-only -c model_reasoning_effort="xhigh" \
+codex exec -m "$MODEL" --sandbox read-only -c model_reasoning_effort="xhigh" \
   -o round1.txt "$(cat prompt.txt)" </dev/null 2>/dev/null
 ```
 
