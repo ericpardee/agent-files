@@ -27,6 +27,10 @@ full review gate with a fix-or-rebut loop, use the `codex-gate` skill instead.
   or `--skip-git-repo-check` unless the user already granted it.
 - `-C <dir>` runs from another directory; `--skip-git-repo-check` is needed
   outside a repository.
+- `-i <file>` attaches an image and takes a list of files, so it swallows a
+  prompt placed after it (the run then fails with `No prompt provided via
+  stdin`). Put the prompt before any `-i` flags, or repeat `-i` per file after
+  the prompt.
 - Pass `-o <file>` when the final message must survive scrollback.
 
 ## Reviews
