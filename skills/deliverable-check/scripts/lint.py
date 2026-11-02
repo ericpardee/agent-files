@@ -24,8 +24,11 @@ METASPEAK = [
     r"\bv\d+ of this\b",
 ]
 
+GREETING = r"^\s*(?:hi|hey|hello|dear)\s+[A-Z][\w'-]*"
+
 RULES = [
     ("metaspeak", METASPEAK),
+    ("greeting: no comma, nothing else on the line", [GREETING + r"\s*,", GREETING + r"[^\n]*\S[^\n]*\s\S"]),
     ("em/en dash", [r"—", r"–"]),
     ("'isn't just' trope", [r"\bisn'?t just\b", r"\bnot just [^.\n]{0,60}, it'?s\b"]),
 ]
@@ -40,6 +43,8 @@ def lint(path):
         return None
     findings = []
     for lineno, line in enumerate(lines, 1):
+        if re.match(GREETING + r"\s*$", line, re.IGNORECASE) and lineno < len(lines) and lines[lineno].strip():
+            findings.append((lineno, "greeting: blank line must follow", line.strip()[:120]))
         for label, patterns in RULES:
             for pat in patterns:
                 if re.search(pat, line, re.IGNORECASE):
