@@ -80,13 +80,14 @@ git diff --stat "origin/$BASE...HEAD"   # must be non-empty
 
 ## Step 2: Run Codex at max reasoning
 
-Pass `-m` with the first model OpenAI lists in `~/.codex/models_cache.json` (the lowest
-`priority` with `visibility` "list"; Codex refreshes that file itself), so the gate follows
-OpenAI's order with no edit here. If the login refuses that model, use the next one.
-Force max reasoning explicitly and append `2>/dev/null` to suppress thinking tokens.
+Pass `-m gpt-6-astra` and force `xhigh` reasoning explicitly. The model is pinned on
+purpose: the gate does not follow the order of `~/.codex/models_cache.json`, so a newer
+model at the top of that list does not change the reviewer until the User changes this
+line. If the login refuses the pinned model, stop and tell the User; do not fall back to
+another model. Append `2>/dev/null` to suppress thinking tokens.
 
 ```bash
-MODEL=$(jq -r '[.models[] | select(.visibility == "list")] | sort_by(.priority) | .[0].slug' ~/.codex/models_cache.json)
+MODEL=gpt-6-astra
 ```
 
 Two invocation rules that will otherwise cost you a wasted run:
