@@ -9,7 +9,10 @@ slack-drafts [-w workspace] delete <draft_id>
 slack-drafts [-w workspace] restore <backup.json>
 slack-drafts [-w workspace] raw <draft_id>
 slack-drafts [-w workspace] show <draft_id>
+slack-drafts [-w workspace] since <channel_id> <ts> [thread_ts]
 ```
+
+- `since` prints the channel's messages newer than `ts`, one per line as `ts`, user id and text, and with `thread_ts` the replies in that thread too. It reads only, so a shell loop can wait for an answer to a sent draft without spending model tokens.
 
 - `show` prints one draft's full text as markdown and changes nothing. `list` shows only the first 90 characters, so use `show` to read a draft that was edited in the composer before rewriting it.
 

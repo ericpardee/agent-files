@@ -210,7 +210,7 @@ func main() {
 	}
 	os.Args = append([]string{os.Args[0]}, args...)
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: slack-drafts [-w workspace] list [channel_id] | delete <draft_id> | clear [--all] <channel_id> [thread_ts] | restore <backup.json> | raw <draft_id> | show <draft_id>")
+		fmt.Fprintln(os.Stderr, "usage: slack-drafts [-w workspace] list [channel_id] | delete <draft_id> | clear [--all] <channel_id> [thread_ts] | restore <backup.json> | raw <draft_id> | show <draft_id> | since <channel_id> <ts> [thread_ts]")
 		os.Exit(2)
 	}
 	cache, _ := os.UserCacheDir()
@@ -289,6 +289,36 @@ func main() {
 		}
 		fmt.Fprintln(os.Stderr, "no such draft:", os.Args[2])
 		os.Exit(1)
+	case "since":
+		if len(os.Args) < 4 {
+			fmt.Fprintln(os.Stderr, "since needs a channel_id and a message timestamp")
+			os.Exit(2)
+		}
+		emit := func(method string, v url.Values) {
+			var r struct {
+				OK       bool   `json:"ok"`
+				Error    string `json:"error"`
+				Messages []struct {
+					TS   string `json:"ts"`
+					User string `json:"user"`
+					Text string `json:"text"`
+				} `json:"messages"`
+			}
+			if err := call(c, token, method, v, &r); err != nil || !r.OK {
+				fmt.Fprintln(os.Stderr, method, "failed:", err, r.Error)
+				os.Exit(1)
+			}
+			for _, m := range r.Messages {
+				if m.TS <= os.Args[3] {
+					continue
+				}
+				fmt.Printf("%s\t%s\t%s\n", m.TS, m.User, strings.ReplaceAll(m.Text, "\n", " "))
+			}
+		}
+		emit("conversations.history", url.Values{"channel": {os.Args[2]}, "oldest": {os.Args[3]}, "limit": {"100"}})
+		if len(os.Args) > 4 {
+			emit("conversations.replies", url.Values{"channel": {os.Args[2]}, "ts": {os.Args[4]}, "oldest": {os.Args[3]}, "limit": {"100"}})
+		}
 	case "clear":
 		all := false
 		if len(os.Args) > 2 && os.Args[2] == "--all" {
