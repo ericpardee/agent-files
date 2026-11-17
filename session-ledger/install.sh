@@ -28,7 +28,7 @@ if [ ! -f "$ENV_FILE" ]; then
 LEDGER_FILE=$LEDGER_FILE
 
 # Model used for distillation and the weekly dream pass.
-#MODEL=claude-sonnet-5
+#MODEL=claude-sonnet-5-5
 
 # Optional: Pushover alert on any failure exit (both required).
 #PUSHOVER_APP_TOKEN=

@@ -102,7 +102,7 @@ variables with the same names override the file.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `LEDGER_FILE` | required | Markdown file entries are appended to |
-| `MODEL` | `claude-sonnet-5` | Model for distill and dream calls |
+| `MODEL` | `claude-sonnet-5-5` | Model for distill and dream calls |
 | `PROJECTS_DIR` | `~/.claude/projects` | Claude Code transcript location |
 | `MIN_NEW_PROMPTS` | `1` | New user prompts needed before redistilling |
 | `MAX_EXCERPT_CHARS` | `40000` | Cap on excerpt sent to the model; each turn gets an equal share |

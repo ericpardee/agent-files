@@ -190,7 +190,7 @@ def test_dream_runs_claude_with_thinking_and_tools_off(tmp_path, monkeypatch):
     monkeypatch.setattr(ledger.subprocess, "run", fake_run)
     monkeypatch.setattr(ledger, "RUNS_DIR", str(tmp_path / "runs"))
     monkeypatch.setattr(ledger, "LOG_FILE", str(tmp_path / "ledger.log"))
-    ledger.mode_dream({"LEDGER_FILE": str(path), "MODEL": "claude-sonnet-5"}, dry_run=False)
+    ledger.mode_dream({"LEDGER_FILE": str(path), "MODEL": "claude-sonnet-5-5"}, dry_run=False)
     argv, kw = calls[0]
     assert argv[:2] == ["claude", "-p"]
     _assert_no_tools(argv)
@@ -206,7 +206,7 @@ def test_dream_drops_chatter_before_the_header(tmp_path, monkeypatch):
     reply = "I'll consolidate the ledger, merging duplicate entries.\n\n" + content
     monkeypatch.setattr(ledger, "run_claude", lambda *a, **k: (reply, None))
     monkeypatch.setattr(ledger, "LOG_FILE", str(tmp_path / "ledger.log"))
-    ledger.mode_dream({"LEDGER_FILE": str(path), "MODEL": "claude-sonnet-5"}, dry_run=False)
+    ledger.mode_dream({"LEDGER_FILE": str(path), "MODEL": "claude-sonnet-5-5"}, dry_run=False)
     assert path.read_text() == content
     assert ledger.drop_preamble("Sure:\n```markdown\n" + content + "```\n") == content.rstrip()
     assert ledger.drop_preamble("no header here") == "no header here"
@@ -228,7 +228,7 @@ def test_distill_runs_claude_without_tools_in_the_default_environment(tmp_path, 
 
     monkeypatch.setattr(ledger.subprocess, "run", fake_run)
     monkeypatch.setattr(ledger, "RUNS_DIR", str(tmp_path))
-    out, err = ledger.run_claude("prompt", {"MODEL": "claude-sonnet-5"})
+    out, err = ledger.run_claude("prompt", {"MODEL": "claude-sonnet-5-5"})
     assert err is None and out == "- Outcome: it worked"
     argv, kw = calls[0]
     _assert_no_tools(argv)

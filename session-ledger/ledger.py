@@ -62,7 +62,7 @@ DISTILL_TIMEOUT_SECONDS = 300
 DREAM_TIMEOUT_SECONDS = 1800
 
 DEFAULTS = {
-    "MODEL": "claude-sonnet-5",
+    "MODEL": "claude-sonnet-5-5",
     "PROJECTS_DIR": os.path.join(CLAUDE_DIR, "projects"),
     "MIN_NEW_PROMPTS": "1",
     # Each turn gets an equal share, so a long session needs room: at 10000 a
