@@ -8,7 +8,10 @@ slack-drafts [-w workspace] clear [--all] <channel_id> [thread_ts]
 slack-drafts [-w workspace] delete <draft_id>
 slack-drafts [-w workspace] restore <backup.json>
 slack-drafts [-w workspace] raw <draft_id>
+slack-drafts [-w workspace] show <draft_id>
 ```
+
+- `show` prints one draft's full text as markdown and changes nothing. `list` shows only the first 90 characters, so use `show` to read a draft that was edited in the composer before rewriting it.
 
 - `clear` deletes the active drafts for one channel, or for one thread when `thread_ts` is given. It deletes only drafts the API created that no Slack client has touched since. Drafts typed or edited in Slack are kept and printed as `kept`, which also signals that someone edited a generated draft; `delete <draft_id>` removes one after saving it, and `--all` deletes them all.
 - `delete` and `clear` save every draft before deleting it, to `$SLACK_DRAFTS_BACKUP_DIR` (default `/tmp/slack-drafts`): `<name>.txt` holds the message as markdown, `<name>.json` the raw blocks. If the save fails, nothing is deleted. Read the `.txt` before writing a replacement, so edits made in the composer are not lost.

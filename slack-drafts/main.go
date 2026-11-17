@@ -210,7 +210,7 @@ func main() {
 	}
 	os.Args = append([]string{os.Args[0]}, args...)
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: slack-drafts [-w workspace] list [channel_id] | delete <draft_id> | clear [--all] <channel_id> [thread_ts] | restore <backup.json> | raw <draft_id>")
+		fmt.Fprintln(os.Stderr, "usage: slack-drafts [-w workspace] list [channel_id] | delete <draft_id> | clear [--all] <channel_id> [thread_ts] | restore <backup.json> | raw <draft_id> | show <draft_id>")
 		os.Exit(2)
 	}
 	cache, _ := os.UserCacheDir()
@@ -276,6 +276,19 @@ func main() {
 				fmt.Println(string(b))
 			}
 		}
+	case "show":
+		if len(os.Args) < 3 {
+			fmt.Fprintln(os.Stderr, "show needs a draft_id")
+			os.Exit(2)
+		}
+		for _, d := range list.Drafts {
+			if d.ID == os.Args[2] {
+				fmt.Print(render(d.Blocks))
+				return
+			}
+		}
+		fmt.Fprintln(os.Stderr, "no such draft:", os.Args[2])
+		os.Exit(1)
 	case "clear":
 		all := false
 		if len(os.Args) > 2 && os.Args[2] == "--all" {
