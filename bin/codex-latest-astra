@@ -14,8 +14,8 @@ Where the catalog comes from, in order:
 2. `codex debug models`, which fetches the live catalog (about a second),
    when `codex login status` says the login is signed in. When it answers,
    its list decides, including a list with no Astra;
-3. only when Codex cannot be asked: the cached file whatever its age, with a
-   note on stderr.
+3. only when Codex cannot be asked: the cached file whatever its age, when
+   the binary in use fetched it, with a note on stderr.
 
 No Astra in the catalog, or no catalog at all, is an error (exit 1) and
 nothing is printed. The caller stops there: this script never answers with
@@ -44,7 +44,8 @@ shell wrapper around `codex`, for example). Callers that must be current on
 their own run this script and pass the result to `codex -m`.
 
 Environment: CODEX_HOME (default ~/.codex) picks the login; CODEX_BIN names
-the codex binary when it is not `codex` on PATH.
+the codex binary when it is not `codex` on PATH. Set it to the binary that
+will run the model: the answer is what that binary is offered.
 """
 import calendar
 import json
@@ -230,13 +231,14 @@ def main():
         return 0 if set(args) & {"-h", "--help"} else 2
     models, age, fetched_by = cached()
     # the cache is one file per login, and a Codex of another version is offered another list
-    fresh = models is not None and age is not None and 0 <= age < FRESH and fetched_by == binary_version() != ""
+    same_codex = models is not None and fetched_by == binary_version() != ""
+    fresh = same_codex and age is not None and 0 <= age < FRESH
     model = newest(models, family) if fresh else None
     if not model:
         current = live()
         if current is not None:
             model = newest(current, family)  # Codex answered: its list decides, also when it has no such model
-        elif models is not None and not fresh:
+        elif same_codex and not fresh:
             model = newest(models, family)
             if model:
                 print("codex-latest-astra: Codex could not be asked for its model list; this is from a cached list "

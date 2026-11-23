@@ -90,6 +90,9 @@ class LatestAstra(unittest.TestCase):
         self.live(CATALOG)
         r = self.run_it()
         self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "gpt-6.2-astra\n", ""))
+        (self.tmp / "live.json").unlink()  # and when codex cannot answer, that list is no fallback either
+        r = self.run_it()
+        self.assertEqual((r.returncode, r.stdout), (1, ""))
 
     def test_no_cache_asks_codex(self):
         self.live(CATALOG)
