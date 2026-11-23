@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""Print the newest Astra model this Codex login offers, for `codex -m`.
+
+Codex has no name that means "the latest Astra": its `model` setting is one
+fixed model, and leaving it unset selects the top of Codex's list, which is a
+different family. This script reads Codex's own model catalog and prints the
+listed model named gpt-<version>-astra with the highest version, so a script
+or a config never has to be edited when a new Astra ships.
+
+Where the catalog comes from, in order:
+1. $CODEX_HOME/models_cache.json, when Codex refreshed it in the last day
+   (Codex rewrites it as it runs, so this is the usual, instant case);
+2. `codex debug models`, which fetches the live catalog (about a second),
+   when `codex login status` says the login is signed in. When it answers,
+   its list decides, including a list with no Astra;
+3. only when Codex cannot be asked: the cached file whatever its age, with a
+   note on stderr.
+
+No Astra in the catalog, or no catalog at all, is an error (exit 1) and
+nothing is printed. The caller stops there: this script never answers with
+another family.
+
+Usage: codex-latest-astra [--sync-config] [--family NAME]
+
+  --sync-config  also point the top-level `model` key of
+                 $CODEX_HOME/config.toml at that model, so every Codex run
+                 that names no model follows it. The model line is rewritten
+                 when it differs and added at the top when the config has
+                 none. This needs Python 3.11 or later, which can read TOML:
+                 the change is checked before it is written and may alter
+                 the model key and nothing else. When the config cannot be
+                 brought in line, the model is still printed, the reason goes
+                 to stderr and the exit code is 3.
+  --family NAME  another family name in place of astra.
+
+Codex's config holds a literal model name, so something has to run this
+with --sync-config for runs that read the config to follow a new Astra (a
+shell wrapper around `codex`, for example). Callers that must be current on
+their own run this script and pass the result to `codex -m`.
+
+Environment: CODEX_HOME (default ~/.codex) picks the login; CODEX_BIN names
+the codex binary when it is not `codex` on PATH.
+"""
+import calendar
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+try:
+    import tomllib
+except ImportError:  # Python before 3.11
+    tomllib = None
+
+FRESH = 24 * 3600
+MODEL_LINE = re.compile(r"""(\s*model\s*=\s*)(["'])([^"']*)\2(\s*(?:#.*)?)$""")
+
+
+def codex_home():
+    return os.path.expanduser(os.environ.get("CODEX_HOME") or "~/.codex")
+
+
+def cached():
+    """(models, age in seconds) from the cache file; (None, None) when it cannot be read."""
+    try:
+        with open(os.path.join(codex_home(), "models_cache.json"), encoding="utf-8") as f:
+            data = json.load(f)
+        models = data["models"]
+        m = re.match(r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)", str(data.get("fetched_at") or ""))
+        age = time.time() - calendar.timegm(tuple(int(x) for x in m.groups()) + (0, 0, 0)) if m else None
+        return (models if isinstance(models, list) else None), age
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+
+
+def live():
+    """Models from `codex debug models`; None when Codex could not be asked."""
+    binary = os.environ.get("CODEX_BIN") or shutil.which("codex") or os.path.expanduser("~/.local/bin/codex")
+    try:
+        # a login that is signed out is handed the list built into the binary, which is not what this login offers
+        signed_in = subprocess.run([binary, "login", "status"], stdin=subprocess.DEVNULL, capture_output=True,
+                                   text=True, timeout=30, check=False)
+        if signed_in.returncode != 0:
+            return None
+        out = subprocess.run([binary, "debug", "models"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                             timeout=45, check=False)
+        if out.returncode != 0:
+            return None
+        data = json.loads(out.stdout)
+        models = data["models"] if isinstance(data, dict) else data
+        return models if isinstance(models, list) else None
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        return None
+
+
+def newest(models, family):
+    """The listed gpt-<version>-<family> slug with the highest version, or None."""
+    best = None
+    for model in models or []:
+        if not isinstance(model, dict) or model.get("visibility", "list") != "list":
+            continue
+        slug = str(model.get("slug") or "")
+        m = re.fullmatch(rf"gpt-(\d+(?:\.\d+)*)-{re.escape(family)}", slug)
+        if not m:
+            continue
+        version = tuple(int(x) for x in m.group(1).split("."))
+        if best is None or version > best[0]:
+            best = (version, slug)
+    return best[1] if best else None
+
+
+def model_line(lines):
+    """Index of the top-level `model = "..."` line, or None. Top-level keys end at the first table header, and a
+    line inside a multi-line string is that string's text, not a key."""
+    fence = None
+    for i, line in enumerate(lines):
+        if fence:
+            if line.count(fence) % 2:
+                fence = None
+            continue
+        if re.match(r"\s*\[", line):
+            return None
+        if MODEL_LINE.match(line):
+            return i
+        for quotes in ('"""', "'''"):
+            if line.count(quotes) % 2:
+                fence = quotes
+                break
+    return None
+
+
+def sync_config(model):
+    """Point config.toml's top-level model key at `model`. Returns "" when it is in line, else what is in the way."""
+    path = os.path.join(codex_home(), "config.toml")
+    if tomllib is None:
+        return (f"--sync-config needs Python 3.11 or later to read TOML (this is {sys.version_info[0]}."
+                f"{sys.version_info[1]}); the model in {path} is unchanged")
+    target = os.path.realpath(path)
+    for _ in range(3):
+        try:
+            with open(target, encoding="utf-8") as f:
+                text = f.read()
+        except OSError as exc:
+            return f"cannot read {path} ({exc.strerror}); its model is unchanged"
+        try:
+            before = tomllib.loads(text)
+        except ValueError:
+            return f"{path} is not valid TOML; left alone"
+        if before.get("model") == model:
+            return ""
+        lines = text.split("\n")
+        i = model_line(lines)
+        if i is not None:
+            m = MODEL_LINE.match(lines[i])
+            old = m.group(3)
+            lines[i] = f'{m.group(1)}"{model}"{m.group(4)}'
+        elif "model" in before:
+            return f"{path} sets model in a form this script does not rewrite; left alone"
+        else:
+            old = "(unset)"
+            lines.insert(0, f'model = "{model}"')
+        changed = "\n".join(lines)
+        try:
+            after = tomllib.loads(changed)
+        except ValueError:
+            after = None
+        if after != dict(before, model=model):
+            return f"rewriting the model line of {path} would change more than the model; left alone"
+        tmp = None
+        try:
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), prefix=".config.toml.")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(changed)
+            shutil.copymode(target, tmp)
+            with open(target, encoding="utf-8") as f:
+                moved = f.read() != text
+            if moved:
+                os.unlink(tmp)
+                continue  # the config changed while this ran (Codex saves it too): start over from its new text
+            os.replace(tmp, target)
+        except OSError as exc:
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            return f"cannot write {path} ({exc.strerror}); its model is unchanged"
+        print(f"{path}: model {old} -> {model}", file=sys.stderr)
+        return ""
+    return f"{path} kept changing while this ran; its model is unchanged"
+
+
+
+def main():
+    args = sys.argv[1:]
+    family = "astra"
+    if "--family" in args:
+        i = args.index("--family")
+        if i + 1 >= len(args):
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+        family = args[i + 1]
+        del args[i:i + 2]
+    sync = "--sync-config" in args
+    if [a for a in args if a != "--sync-config"]:
+        print(__doc__.strip(), file=sys.stderr)
+        return 0 if set(args) & {"-h", "--help"} else 2
+    models, age = cached()
+    fresh = models is not None and age is not None and 0 <= age < FRESH
+    model = newest(models, family) if fresh else None
+    if not model:
+        current = live()
+        if current is not None:
+            model = newest(current, family)  # Codex answered: its list decides, also when it has no such model
+        elif models is not None and not fresh:
+            model = newest(models, family)
+            if model:
+                print("codex-latest-astra: Codex could not be asked for its model list; this is from a cached list "
+                      f"{int((age or 0) // 3600)} hours old", file=sys.stderr)
+    if not model:
+        print(f"codex-latest-astra: Codex lists no {family} model for {codex_home()} (or its model list could not "
+              "be read). Not choosing another family; check `codex debug models` and the login.", file=sys.stderr)
+        return 1
+    problem = sync_config(model) if sync else ""
+    print(model)
+    if problem:
+        print(f"codex-latest-astra: {problem}", file=sys.stderr)
+        return 3
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
