@@ -81,16 +81,18 @@ git diff --stat "origin/$BASE...HEAD"   # must be non-empty
 ## Step 2: Run Codex at max reasoning
 
 The gate runs on the newest Astra model the Codex login offers, at `xhigh` reasoning,
-both passed explicitly. `codex-latest-astra` (this repo's `bin/`, linked on PATH) reads
-Codex's own model list and prints the listed `gpt-<version>-astra` with the highest
-version, so a new Astra is picked up with no edit here. The family is fixed on purpose:
+both passed explicitly. `codex-latest-astra` (in this skill's folder, a link to the
+repo's `bin/codex-latest-astra`) reads Codex's own model list and prints the listed
+`gpt-<version>-astra` with the highest version, so a new Astra is picked up with no edit
+here. Run it from this skill's base directory, so the gate works where `bin/` is not on
+PATH. The family is fixed on purpose:
 the gate does not follow the top of Codex's list, which is a different family. If the
 script exits non-zero (no Astra listed, or no list to read), or the login refuses the
 model, stop and tell the User; do not fall back to another model. Write the resolved
 model in the ledger. Append `2>/dev/null` to suppress thinking tokens.
 
 ```bash
-MODEL=$(codex-latest-astra) || exit 1
+MODEL=$("<this skill's base directory>/codex-latest-astra") || exit 1
 ```
 
 Two invocation rules that will otherwise cost you a wasted run:
