@@ -29,14 +29,16 @@ class LatestAstra(unittest.TestCase):
         self.home.mkdir()
         self.fake = self.tmp / "codex"  # stands in for the codex binary: prints the catalog in live.json
         self.fake.write_text("#!/bin/sh\n"
+                             "[ \"$1\" = \"--version\" ] && { echo \"codex-cli ${FAKE_CODEX_VERSION:-1.0.0}\"; exit 0; }\n"
                              f"if [ \"$1 $2\" = \"login status\" ]; then [ ! -f '{self.tmp}/signed-out' ]; exit $?; fi\n"
                              "[ \"$1 $2\" = \"debug models\" ] || exit 9\n"
                              f"[ -f '{self.tmp}/live.json' ] || exit 1\ncat '{self.tmp}/live.json'\n")
         self.fake.chmod(0o755)
 
-    def cache(self, models, age=0):
+    def cache(self, models, age=0, version="1.0.0"):
         stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - age)) + ".000000Z"
-        (self.home / "models_cache.json").write_text(json.dumps({"fetched_at": stamp, "models": models}))
+        (self.home / "models_cache.json").write_text(json.dumps({"fetched_at": stamp, "client_version": version,
+                                                                 "models": models}))
 
     def live(self, models):
         (self.tmp / "live.json").write_text(json.dumps({"models": models}))
@@ -82,6 +84,12 @@ class LatestAstra(unittest.TestCase):
         r = self.run_it()
         self.assertEqual((r.returncode, r.stdout), (0, "gpt-6-astra\n"))
         self.assertIn("could not be asked", r.stderr)
+
+    def test_a_list_fetched_by_another_codex_version_is_not_used(self):
+        self.cache([model("gpt-6-astra")], version="0.9.0")  # fresh, but what an older Codex was offered
+        self.live(CATALOG)
+        r = self.run_it()
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (0, "gpt-6.2-astra\n", ""))
 
     def test_no_cache_asks_codex(self):
         self.live(CATALOG)
@@ -145,18 +153,30 @@ class LatestAstra(unittest.TestCase):
         self.assertEqual(r.returncode, 3)
         self.assertIn("does not rewrite", r.stderr)
         self.assertEqual(cfg.read_text(), '"model" = "gpt-6-astra"\n')
+        # a quote in a comment is not a string, and the key under it is still found
+        cfg.write_text('# three quotes: """\nmodel = "gpt-6-astra"\n')
+        self.assertEqual(self.run_it("--sync-config").returncode, 0)
+        self.assertEqual(cfg.read_text(), '# three quotes: """\nmodel = "gpt-6.2-astra"\n')
         cfg.unlink()
-        r = self.run_it("--sync-config")  # no config at all
-        self.assertEqual((r.returncode, r.stdout), (3, "gpt-6.2-astra\n"))
-        self.assertIn("cannot read", r.stderr)
+        r = self.run_it("--sync-config")  # a login with no config yet gets one, private to the user
+        self.assertEqual((r.returncode, r.stdout), (0, "gpt-6.2-astra\n"))
+        self.assertEqual(cfg.read_text(), 'model = "gpt-6.2-astra"\n')
+        self.assertEqual(stat.S_IMODE(cfg.stat().st_mode), 0o600)
+
+    @NEEDS_TOML
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can write a read-only folder")
+    def test_sync_config_says_so_when_the_config_cannot_be_written(self):
+        self.cache(CATALOG)
+        cfg = self.home / "config.toml"
         cfg.write_text('model = "gpt-6-astra"\n')
-        self.home.chmod(0o500)  # a folder that cannot be written: the model is printed and the caller is told
+        self.home.chmod(0o500)
         try:
             r = self.run_it("--sync-config")
         finally:
             self.home.chmod(0o700)
         self.assertEqual((r.returncode, r.stdout), (3, "gpt-6.2-astra\n"))
         self.assertIn("cannot write", r.stderr)
+        self.assertEqual(cfg.read_text(), 'model = "gpt-6-astra"\n')
 
     @unittest.skipIf(sys.version_info >= (3, 11), "this interpreter can read TOML")
     def test_sync_config_is_refused_where_toml_cannot_be_read(self):
