@@ -50,8 +50,11 @@ parsing with `the argument '--base <BRANCH>' cannot be used with '[PROMPT]'`
 ## Resuming
 
 `codex exec resume --last "<prompt>" </dev/null 2>/dev/null` continues the
-previous session with its original model, reasoning effort, and sandbox; do not
-pass configuration flags when resuming unless the user asks. After any run,
+previous session with its original model and reasoning effort, but not its
+sandbox: a resumed run takes `sandbox_mode` from `~/.codex/config.toml`, which
+can be `danger-full-access`. `resume` has no `--sandbox` flag, so a review
+resumed from a read-only run passes `-c sandbox_mode="read-only"`. Pass no
+other configuration flags when resuming unless the user asks. After any run,
 tell the user the session can be resumed this way.
 
 ## Quick reference
@@ -64,6 +67,7 @@ tell the user the session can be resumed this way.
 | Review with your own instructions | `codex exec --sandbox read-only "<instructions> Review only <scope>." </dev/null 2>/dev/null` |
 | Apply edits | `codex exec --sandbox workspace-write "Refactor ..." </dev/null 2>/dev/null` |
 | Resume | `codex exec resume --last "continue with ..." </dev/null 2>/dev/null` |
+| Resume a read-only review | `codex exec resume --last -c sandbox_mode="read-only" "round 2 ..." </dev/null 2>/dev/null` |
 | Another directory | `codex exec -C /path --sandbox read-only "..." </dev/null 2>/dev/null` |
 
 ## After a run
